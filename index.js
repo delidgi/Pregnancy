@@ -114,31 +114,19 @@ function addMessage(character, text, isUser = false) {
     }
 }
 
-// ---------- ПАНЕЛЬ UI ----------
-
-function findPanelContainer() {
-    // Ищем место для вставки панели
-    let container = document.querySelector(".mobile-main-container");
-    if (!container) container = document.querySelector("main");
-    if (!container) container = document.querySelector(".main");
-    if (!container) container = document.querySelector(".chat");
-    if (!container) container = document.body;
-    return container;
-}
+// ---------- ПАНЕЛЬ UI (FIXED, не перекрывает) ----------
 
 function renderPanel() {
     const settings = getSettings();
-    const container = findPanelContainer();
 
-    // Удалим старую панель если была
-    const oldPanel = document.getElementById("reprohealth-panel");
-    if (oldPanel) {
-        oldPanel.remove();
+    // Ищем или создаём контейнер для расширений (если его нет)
+    let extensionContainer = document.getElementById("reprohealth-panel");
+    if (!extensionContainer) {
+        extensionContainer = document.createElement("div");
+        extensionContainer.id = "reprohealth-panel";
+        // Используем body, но с position: fixed, чтобы не перекрывало
+        document.body.appendChild(extensionContainer);
     }
-
-    // Создаём новую панель
-    const panel = document.createElement("div");
-    panel.id = "reprohealth-panel";
 
     const preg = settings.pregnancy;
     const fert = settings.fertility;
@@ -170,95 +158,84 @@ function renderPanel() {
     const condomStatus = contra.condom ? "🟢 ВКЛ" : "🔴 ВЫКЛ";
     const pillStatus = contra.pill ? "🟢 ВКЛ" : "🔴 ВЫКЛ";
 
-    panel.innerHTML = `
-        <div class="reprohealth-header">
-            <span class="reprohealth-title">🩺 Repro Health</span>
-            <span class="reprohealth-tag">Авто</span>
-        </div>
+    extensionContainer.innerHTML = `
+        <div class="reprohealth-box">
+            <div class="reprohealth-header">
+                <span class="reprohealth-title">🩺 Repro Health</span>
+                <span class="reprohealth-tag">Авто</span>
+            </div>
 
-        <div class="reprohealth-status">
-            <div class="reprohealth-status-row">
-                <span class="reprohealth-label">День цикла:</span>
-                <span class="reprohealth-value">${cycleDay}/28</span>
+            <div class="reprohealth-status">
+                <div class="reprohealth-status-row">
+                    <span class="reprohealth-label">День цикла:</span>
+                    <span class="reprohealth-value">${cycleDay}/28</span>
+                </div>
+                <div class="reprohealth-status-row">
+                    <span class="reprohealth-label">Фертильность:</span>
+                    <span class="reprohealth-value">${fertilityStatus}</span>
+                </div>
+                <div class="reprohealth-status-row">
+                    <span class="reprohealth-label">Беременность:</span>
+                    <span class="reprohealth-value">${pregnancyLine}</span>
+                </div>
+                <div class="reprohealth-status-row">
+                    <span class="reprohealth-label">Эмбрионов:</span>
+                    <span class="reprohealth-value">${fetusLine}</span>
+                </div>
+                <div class="reprohealth-status-row">
+                    <span class="reprohealth-label">Пол:</span>
+                    <span class="reprohealth-value">${sexLine}</span>
+                </div>
+                <div class="reprohealth-status-row">
+                    <span class="reprohealth-label">ИППП:</span>
+                    <span class="reprohealth-value">${settings.sti.infected.length > 0 ? "⚠️ Заражена" : "✅ Чистая"}</span>
+                </div>
             </div>
-            <div class="reprohealth-status-row">
-                <span class="reprohealth-label">Фертильность:</span>
-                <span class="reprohealth-value">${fertilityStatus}</span>
-            </div>
-            <div class="reprohealth-status-row">
-                <span class="reprohealth-label">Беременность:</span>
-                <span class="reprohealth-value">${pregnancyLine}</span>
-            </div>
-            <div class="reprohealth-status-row">
-                <span class="reprohealth-label">Эмбрионов:</span>
-                <span class="reprohealth-value">${fetusLine}</span>
-            </div>
-            <div class="reprohealth-status-row">
-                <span class="reprohealth-label">Пол:</span>
-                <span class="reprohealth-value">${sexLine}</span>
-            </div>
-            <div class="reprohealth-status-row">
-                <span class="reprohealth-label">ИППП:</span>
-                <span class="reprohealth-value">${settings.sti.infected.length > 0 ? "⚠️ Заражена" : "✅ Чистая"}</span>
-            </div>
-        </div>
 
-        <div class="reprohealth-toggles">
-            <button id="repro-condom-toggle" class="repro-toggle ${contra.condom ? "on" : "off"}">
-                <span class="repro-toggle-label">Презерватив</span>
-                <span class="repro-toggle-state">${condomStatus}</span>
-            </button>
-            <button id="repro-pill-toggle" class="repro-toggle ${contra.pill ? "on" : "off"}">
-                <span class="repro-toggle-label">Таблетки</span>
-                <span class="repro-toggle-state">${pillStatus}</span>
-            </button>
-        </div>
+            <div class="reprohealth-toggles">
+                <button id="repro-condom-toggle" class="repro-toggle ${contra.condom ? "on" : "off"}">
+                    <span class="repro-toggle-label">Презерватив</span>
+                    <span class="repro-toggle-state">${condomStatus}</span>
+                </button>
+                <button id="repro-pill-toggle" class="repro-toggle ${contra.pill ? "on" : "off"}">
+                    <span class="repro-toggle-label">Таблетки</span>
+                    <span class="repro-toggle-state">${pillStatus}</span>
+                </button>
+            </div>
 
-        <div class="reprohealth-note">
-            ⚡ Система автоматична. Беременность: вагинал + без защиты. ИППП: любой секс.
+            <div class="reprohealth-note">
+                ⚡ Беременность: вагинал + без защиты. ИППП: любой секс.
+            </div>
         </div>
     `;
 
-    // Вставляем панель в контейнер
-    if (container) {
-        container.appendChild(panel);
-    }
-
-    // Навешиваем обработчики ПОСЛЕ вставки в DOM
+    // Навешиваем обработчики с задержкой
     setTimeout(() => {
         const condomBtn = document.querySelector("#repro-condom-toggle");
         const pillBtn = document.querySelector("#repro-pill-toggle");
 
         if (condomBtn) {
-            condomBtn.addEventListener("click", (e) => {
+            condomBtn.onclick = (e) => {
                 e.preventDefault();
-                e.stopPropagation();
                 settings.contraception.condom = !settings.contraception.condom;
                 saveSettingsDebounced();
                 renderPanel();
                 addMessage("System", `🩹 Презерватив ${settings.contraception.condom ? "надет" : "снят"}`);
-            });
-            console.log("[ReproHealth] Condom button attached");
-        } else {
-            console.warn("[ReproHealth] Condom button not found");
+            };
         }
 
         if (pillBtn) {
-            pillBtn.addEventListener("click", (e) => {
+            pillBtn.onclick = (e) => {
                 e.preventDefault();
-                e.stopPropagation();
                 settings.contraception.pill = !settings.contraception.pill;
                 saveSettingsDebounced();
                 renderPanel();
                 addMessage("System", `💊 Таблетки ${settings.contraception.pill ? "приняты" : "отменены"}`);
-            });
-            console.log("[ReproHealth] Pill button attached");
-        } else {
-            console.warn("[ReproHealth] Pill button not found");
+            };
         }
-    }, 100);
+    }, 50);
 
-    console.log("[ReproHealth] Panel rendered to", container?.className || container?.id || "body");
+    console.log("[ReproHealth] Panel rendered ✅");
 }
 
 // ---------- ЛОГИКА БЕРЕМЕННОСТИ ----------
@@ -385,54 +362,27 @@ function onMessage(data) {
 function initialize() {
     console.log("[ReproHealth] Initializing...");
     getSettings();
-
-    // Рендеримся сразу
     renderPanel();
-
-    // И ещё раз через полсекунды на случай если DOM ещё не готов
-    setTimeout(() => {
-        const panel = document.getElementById("reprohealth-panel");
-        if (!panel) {
-            console.log("[ReproHealth] Panel not found, re-rendering...");
-            renderPanel();
-        }
-    }, 500);
-
-    // Подписываемся на события
+    
     eventSource.on(event_types.MESSAGE_RECEIVED, onMessage);
     eventSource.on(event_types.MESSAGE_SENT, onMessage);
 
-    console.log("[ReproHealth] Event listeners attached");
+    console.log("[ReproHealth] Ready!");
 }
 
-// Ждём, пока DOM будет готов
+// Старт как только возможно
 if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initialize);
 } else {
     initialize();
 }
 
-// Также слушаем APP_READY для надёжности
-if (eventSource) {
-    eventSource.on(event_types.APP_READY, () => {
-        console.log("[ReproHealth] APP_READY, re-rendering panel");
-        setTimeout(() => {
-            renderPanel();
-            const panel = document.getElementById("reprohealth-panel");
-            console.log("[ReproHealth] Panel after APP_READY:", panel ? "✅ visible" : "❌ not found");
-        }, 1000);
-    });
-}
-
-// Экспортируем для доступа из консоли
+// Экспортируем для консоли
 window.ReproHealth = {
     getSettings,
     renderPanel,
     rollD100,
     initiatePregnancy,
     tryConception,
-    trySTICheck,
-    initialize
+    trySTICheck
 };
-
-console.log("[ReproHealth] Script loaded. Type 'ReproHealth.renderPanel()' to debug.");
