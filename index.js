@@ -114,14 +114,16 @@ function addMessage(character, text, isUser = false) {
     }
 }
 
+// ---------- ПАНЕЛЬ UI (FIXED, БЕЗ КОНТЕЙНЕРОВ) ----------
+
 function renderPanel() {
     const settings = getSettings();
 
-    let existing = document.getElementById("reprohealth-panel");
-    if (!existing) {
-        existing = document.createElement("div");
-        existing.id = "reprohealth-panel";
-        document.body.appendChild(existing);
+    let panel = document.getElementById("reprohealth-panel");
+    if (!panel) {
+        panel = document.createElement("div");
+        panel.id = "reprohealth-panel";
+        document.body.appendChild(panel);
     }
 
     const preg = settings.pregnancy;
@@ -154,46 +156,29 @@ function renderPanel() {
     const condomStatus = contra.condom ? "🟢 ВКЛ" : "🔴 ВЫКЛ";
     const pillStatus = contra.pill ? "🟢 ВКЛ" : "🔴 ВЫКЛ";
 
-    existing.innerHTML = `
-        <div style="position: fixed; right: 16px; bottom: 90px; width: 260px; background: rgba(255,107,157,0.25); border: 1px solid rgba(255,255,255,0.3); border-radius: 12px; padding: 12px; color: white; font-family: Arial, sans-serif; font-size: 12px; backdrop-filter: blur(10px); box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 10000; pointer-events: auto;">
-            <div style="font-weight: bold; margin-bottom: 8px; display: flex; justify-content: space-between;">
-                <span>🩺 Repro Health</span>
-                <span style="font-size: 10px; opacity: 0.7;">Авто</span>
+    panel.innerHTML = `
+        <div style="position: fixed; right: 16px; bottom: 90px; width: 270px; background: rgba(255,107,157,0.25); border: 1px solid rgba(255,255,255,0.3); border-radius: 14px; padding: 14px; color: white; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 12px; backdrop-filter: blur(12px); box-shadow: 0 12px 32px rgba(0,0,0,0.4); z-index: 99999; pointer-events: auto;">
+            
+            <div style="font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 14px;">🩺 Repro Health</span>
+                <span style="font-size: 10px; opacity: 0.75; background: rgba(255,255,255,0.15); padding: 2px 6px; border-radius: 4px;">Auto</span>
             </div>
             
-            <div style="background: rgba(0,0,0,0.25); border-radius: 8px; padding: 8px; margin-bottom: 8px; font-size: 11px;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-                    <span>День цикла:</span>
-                    <span style="font-weight: bold;">${cycleDay}/28</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-                    <span>Фертильность:</span>
-                    <span style="font-weight: bold;">${fertilityStatus}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-                    <span>Беременность:</span>
-                    <span style="font-weight: bold;">${pregnancyLine}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-                    <span>Эмбрионов:</span>
-                    <span style="font-weight: bold;">${fetusLine}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-                    <span>Пол:</span>
-                    <span style="font-weight: bold;">${sexLine}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span>ИППП:</span>
-                    <span style="font-weight: bold;">${settings.sti.infected.length > 0 ? "⚠️ Заражена" : "✅ Чистая"}</span>
-                </div>
+            <div style="background: rgba(0,0,0,0.25); border-radius: 10px; padding: 10px; margin-bottom: 10px; font-size: 11px; border: 1px solid rgba(255,255,255,0.12);">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="opacity: 0.85;">День цикла:</span><span style="font-weight: bold; color: #fffacd;">${cycleDay}/28</span></div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="opacity: 0.85;">Фертильность:</span><span style="font-weight: bold; color: #fffacd;">${fertilityStatus}</span></div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="opacity: 0.85;">Беременность:</span><span style="font-weight: bold; color: #fffacd;">${pregnancyLine}</span></div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="opacity: 0.85;">Эмбрионов:</span><span style="font-weight: bold; color: #fffacd;">${fetusLine}</span></div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="opacity: 0.85;">Пол:</span><span style="font-weight: bold; color: #fffacd;">${sexLine}</span></div>
+                <div style="display: flex; justify-content: space-between;"><span style="opacity: 0.85;">ИППП:</span><span style="font-weight: bold; color: #fffacd;">${settings.sti.infected.length > 0 ? "⚠️ Заражена" : "✅ Чистая"}</span></div>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px;">
-                <button id="repro-condom-btn" style="padding: 7px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); background: ${contra.condom ? 'rgba(76,175,80,0.3)' : 'rgba(244,67,54,0.25)'}; color: white; cursor: pointer; font-size: 10px; font-weight: bold; font-family: Arial;">Презерватив<br/>${condomStatus}</button>
-                <button id="repro-pill-btn" style="padding: 7px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); background: ${contra.pill ? 'rgba(76,175,80,0.3)' : 'rgba(244,67,54,0.25)'}; color: white; cursor: pointer; font-size: 10px; font-weight: bold; font-family: Arial;">Таблетки<br/>${pillStatus}</button>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;">
+                <button id="repro-condom-btn" style="padding: 8px 6px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); background: ${contra.condom ? 'rgba(76,175,80,0.35)' : 'rgba(244,67,54,0.25)'}; color: white; cursor: pointer; font-size: 10px; font-weight: bold; font-family: inherit; transition: all 0.15s;">Презерватив<br>${condomStatus}</button>
+                <button id="repro-pill-btn" style="padding: 8px 6px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); background: ${contra.pill ? 'rgba(76,175,80,0.35)' : 'rgba(244,67,54,0.25)'}; color: white; cursor: pointer; font-size: 10px; font-weight: bold; font-family: inherit; transition: all 0.15s;">Таблетки<br>${pillStatus}</button>
             </div>
 
-            <div style="font-size: 9px; opacity: 0.7; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 4px;">⚡ Вагинал + без защиты = беременность. Любой секс = ИППП.</div>
+            <div style="font-size: 9px; opacity: 0.7; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 6px; line-height: 1.3;">⚡ Система автоматична. Вагинал + без защиты = беременность. Любой секс = ИППП.</div>
         </div>
     `;
 
@@ -223,7 +208,11 @@ function renderPanel() {
             };
         }
     }, 50);
+
+    console.log("[ReproHealth] Panel rendered ✅");
 }
+
+// ---------- ЛОГИКА БЕРЕМЕННОСТИ ----------
 
 function initiatePregnancy() {
     const settings = getSettings();
@@ -295,6 +284,8 @@ function tryConception(messageText) {
     saveSettingsDebounced();
 }
 
+// ---------- ЛОГИКА ИППП ----------
+
 function trySTICheck(messageText) {
     const settings = getSettings();
     if (!settings.automation.autoSTICheck || !settings.sti.enabled) return;
@@ -328,6 +319,8 @@ function trySTICheck(messageText) {
     saveSettingsDebounced();
 }
 
+// ---------- ОБРАБОТКА НОВЫХ СООБЩЕНИЙ ----------
+
 function onMessage(data) {
     if (!data) return;
 
@@ -338,8 +331,10 @@ function onMessage(data) {
     trySTICheck(messageText);
 }
 
+// ---------- ИНИЦИАЛИЗАЦИЯ ----------
+
 function initialize() {
-    console.log("[ReproHealth] ✅ Initializing...");
+    console.log("[ReproHealth] Initializing...");
     getSettings();
 
     renderPanel();
@@ -355,7 +350,7 @@ function initialize() {
     eventSource.on(event_types.MESSAGE_RECEIVED, onMessage);
     eventSource.on(event_types.MESSAGE_SENT, onMessage);
 
-    console.log("[ReproHealth] ✅ Ready!");
+    console.log("[ReproHealth] Event listeners attached");
 }
 
 if (document.readyState === "loading") {
@@ -366,7 +361,7 @@ if (document.readyState === "loading") {
 
 if (eventSource) {
     eventSource.on(event_types.APP_READY, () => {
-        console.log("[ReproHealth] APP_READY event");
+        console.log("[ReproHealth] APP_READY");
         setTimeout(() => {
             renderPanel();
         }, 500);
@@ -383,4 +378,4 @@ window.ReproHealth = {
     initialize
 };
 
-console.log("[ReproHealth] ✅ Script loaded. ReproHealth object exported.");
+console.log("[ReproHealth] ✅ Script loaded and ready");
