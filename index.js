@@ -13,19 +13,37 @@ const defaultSettings = {
     triggers: {
         conceptionKeywords: [
             "кончил внутрь", "кончила внутрь", "кончает внутрь",
-            "излился внутрь", "изливается внутрь",
+            "кончил в неё", "кончил в нее",
+            "кончив в неё", "кончив в нее",
+            "кончив в нее без защиты",
+            "излился в неё", "излился в нее",
+            "излился внутрь", "излился в нее без защиты",
             "спустил внутрь", "семя внутри",
-            "creampie", "came inside", "cum inside", "cums inside", "finishing inside"
+            "наполняет её", "наполняет ее",
+            "наполнив её", "наполнив ее",
+            "заливает внутрь", "заполняет её", "заполняет ее",
+            "creampie", "came inside", "cum inside", "cums inside", "filling her", "finishing inside"
         ],
         vaginalKeywords: [
-            "во влагалище", "в вагину", "между ног", "внутрь неё", "внутрь нее",
-            "in her pussy", "into her vagina", "between her legs"
+            "в неё", "в нее", "внутрь неё", "внутрь нее",
+            "во влагалище", "в вагину", "в её лоно", "в ее лоно",
+            "между ног", "глубоко в неё", "глубоко в нее",
+            "in her pussy", "into her vagina", "between her legs", "deep inside"
         ],
         sexKeywords: [
             "занялись сексом", "занимается сексом", "совокупляются",
-            "оральный секс", "анальный секс", "лижет", "сосёт", "сосет",
-            "трахает", "трахался", "трахались",
-            "fuck", "fucks", "fucking", "having sex", "oral", "anal"
+            "оральный секс", "анальный секс", "трахает", "трахается",
+            "трахался", "трахались", "лижет", "сосёт", "сосет",
+            "целует её", "целует ее", "ласкает её", "ласкает ее",
+            "fuck", "fucks", "fucking", "having sex", "oral", "anal", "sucking", "licking"
+        ],
+        condomOnKeywords: [
+            "надел презерватив", "надевает презерватив", "натянул презерватив",
+            "раскатал презерватив", "надо надеть", "put on condom", "condom on"
+        ],
+        condomOffKeywords: [
+            "снял презерватив", "снимает презерватив", "без презерватива",
+            "сорвал презерватив", "removed condom", "no condom", "without condom"
         ]
     },
     contraception: {
@@ -47,8 +65,8 @@ const defaultSettings = {
         outcome: null,
         lastStatusShown: null,
         config: {
-            baseTwinChance: 3,      // %
-            baseTripletChance: 0.3, // %
+            baseTwinChance: 3,
+            baseTripletChance: 0.3,
             revealSexWeek: 12
         }
     },
@@ -56,7 +74,9 @@ const defaultSettings = {
         enabled: true,
         infected: [],
         lastTest: null
-    }
+    },
+    lastTriggerTime: 0,
+    triggerCooldown: 5000
 };
 
 function getSettings() {
@@ -67,8 +87,9 @@ function getSettings() {
 }
 
 function matchesAny(text, list) {
+    if (!text || !list) return false;
     const lower = text.toLowerCase();
-    return list.some(k => lower.includes(k));
+    return list.some(k => lower.includes(k.toLowerCase()));
 }
 
 function rollD100() {
@@ -77,20 +98,45 @@ function rollD100() {
     return (arr[0] % 100) + 1;
 }
 
+function addMessage(character, text, isUser = false) {
+    try {
+        const messageElement = document.createElement("div");
+        messageElement.className = "message is_system";
+        messageElement.innerHTML = `<div class="mes_block">${text}</div>`;
+        const chatMessages = document.querySelector("#chat");
+        if (chatMessages) {
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    } catch (e) {
+        console.error("[ReproHealth] Failed to add message:", e);
+    }
+}
+
 // ---------- ПАНЕЛЬ UI ----------
 
 function renderPanel() {
     const settings = getSettings();
 
+    let container = document.querySelector(".chat-input-wrap, .bottom-button-group, #chat-form");
+    if (!container) {
+        container = document.body;
+    }
+
     let panel = document.getElementById("reprohealth-panel");
     if (!panel) {
         panel = document.createElement("div");
         panel.id = "reprohealth-panel";
-        document.body.appendChild(panel);
+        if (container && container !== document.body) {
+            container.parentElement.insertBefore(panel, container);
+        } else {
+            document.body.appendChild(panel);
+        }
     }
 
     const preg = settings.pregnancy;
     const fert = settings.fertility;
+    const contra = settings.contraception;
 
     let pregnancyLine = preg.isPregnant ? `да, неделя ${preg.currentWeek}` : "нет";
     let fetusLine = preg.isPregnant ? `${preg.fetusCount}` : "-";
@@ -98,69 +144,95 @@ function renderPanel() {
 
     if (preg.isPregnant && preg.currentWeek >= preg.config.revealSexWeek) {
         const sexNames = preg.fetusSexes.map(sex => {
-            if (sex === "male") return "мальчик";
-            if (sex === "female") return "девочка";
-            return "неизвестно";
+            if (sex === "male") return "👦";
+            if (sex === "female") return "👧";
+            return "❓";
         });
-        sexLine = sexNames.join(", ");
+        sexLine = sexNames.join(" ");
     } else if (preg.isPregnant) {
-        sexLine = "пока неизвестен";
+        sexLine = "🔄 неизвестен";
     }
+
+    let fertilityStatus = "норма";
+    const cycleDay = fert.cycleDay;
+    if (cycleDay >= 12 && cycleDay <= 16) {
+        fertilityStatus = "🔥 ВЫСОКАЯ";
+    } else if (cycleDay >= 1 && cycleDay <= 5) {
+        fertilityStatus = "❄️ низкая";
+    }
+
+    const condomStatus = contra.condom ? "🟢 ВКЛ" : "🔴 ВЫКЛ";
+    const pillStatus = contra.pill ? "🟢 ВКЛ" : "🔴 ВЫКЛ";
 
     panel.innerHTML = `
         <div class="reprohealth-header">
-            <span class="reprohealth-title">Repro Health</span>
-            <span class="reprohealth-tag">${settings.language === "ru" ? "авто‑система" : "auto"}</span>
+            <span class="reprohealth-title">🩺 Repro Health</span>
+            <span class="reprohealth-tag">Авто</span>
         </div>
 
         <div class="reprohealth-status">
             <div class="reprohealth-status-row">
-                <span class="reprohealth-label">День цикла</span>
-                <span class="reprohealth-value">${fert.cycleDay}</span>
+                <span class="reprohealth-label">День цикла:</span>
+                <span class="reprohealth-value">${cycleDay}/28</span>
             </div>
             <div class="reprohealth-status-row">
-                <span class="reprohealth-label">Беременность</span>
+                <span class="reprohealth-label">Фертильность:</span>
+                <span class="reprohealth-value">${fertilityStatus}</span>
+            </div>
+            <div class="reprohealth-status-row">
+                <span class="reprohealth-label">Беременность:</span>
                 <span class="reprohealth-value">${pregnancyLine}</span>
             </div>
             <div class="reprohealth-status-row">
-                <span class="reprohealth-label">Эмбрионов</span>
+                <span class="reprohealth-label">Эмбрионов:</span>
                 <span class="reprohealth-value">${fetusLine}</span>
             </div>
             <div class="reprohealth-status-row">
-                <span class="reprohealth-label">Пол</span>
+                <span class="reprohealth-label">Пол:</span>
                 <span class="reprohealth-value">${sexLine}</span>
+            </div>
+            <div class="reprohealth-status-row">
+                <span class="reprohealth-label">ИППП:</span>
+                <span class="reprohealth-value">${settings.sti.infected.length > 0 ? "⚠️ Заражена" : "✅ Чистая"}</span>
             </div>
         </div>
 
         <div class="reprohealth-toggles">
-            <button id="repro-condom-toggle"
-                    class="repro-toggle ${settings.contraception.condom ? "on" : "off"}">
+            <button id="repro-condom-toggle" class="repro-toggle ${contra.condom ? "on" : "off"}">
                 <span class="repro-toggle-label">Презерватив</span>
-                <span class="repro-toggle-state">${settings.contraception.condom ? "ON" : "OFF"}</span>
+                <span class="repro-toggle-state">${condomStatus}</span>
             </button>
-            <button id="repro-pill-toggle"
-                    class="repro-toggle ${settings.contraception.pill ? "on" : "off"}">
+            <button id="repro-pill-toggle" class="repro-toggle ${contra.pill ? "on" : "off"}">
                 <span class="repro-toggle-label">Таблетки</span>
-                <span class="repro-toggle-state">${settings.contraception.pill ? "ON" : "OFF"}</span>
+                <span class="repro-toggle-state">${pillStatus}</span>
             </button>
         </div>
 
         <div class="reprohealth-note">
-            Беременность: только вагинал с эякуляцией внутрь. ИППП: любой секс.
+            ⚡ Система автоматична. Беременность: вагинал + без защиты. ИППП: любой секс.
         </div>
     `;
 
-    panel.querySelector("#repro-condom-toggle").addEventListener("click", () => {
-        settings.contraception.condom = !settings.contraception.condom;
-        saveSettingsDebounced();
-        renderPanel();
-    });
+    const condomBtn = panel.querySelector("#repro-condom-toggle");
+    const pillBtn = panel.querySelector("#repro-pill-toggle");
 
-    panel.querySelector("#repro-pill-toggle").addEventListener("click", () => {
-        settings.contraception.pill = !settings.contraception.pill;
-        saveSettingsDebounced();
-        renderPanel();
-    });
+    if (condomBtn) {
+        condomBtn.addEventListener("click", () => {
+            settings.contraception.condom = !settings.contraception.condom;
+            saveSettingsDebounced();
+            renderPanel();
+            addMessage("System", `🩹 Презерватив ${settings.contraception.condom ? "надет" : "снят"}`);
+        });
+    }
+
+    if (pillBtn) {
+        pillBtn.addEventListener("click", () => {
+            settings.contraception.pill = !settings.contraception.pill;
+            saveSettingsDebounced();
+            renderPanel();
+            addMessage("System", `💊 Таблетки ${settings.contraception.pill ? "приняты" : "отменены"}`);
+        });
+    }
 }
 
 // ---------- ЛОГИКА БЕРЕМЕННОСТИ ----------
@@ -195,17 +267,26 @@ function initiatePregnancy() {
 
     saveSettingsDebounced();
     renderPanel();
+
+    const sexDisplay = sexes.map(s => s === "male" ? "👦" : "👧").join(" ");
+    addMessage("System", `🤰 <b>БРОСОК НА ЗАЧАТИЕ:</b> ✅ Зачатие произошло!\n<b>Эмбрионов:</b> ${fetusCount}\n<b>Пол:</b> ${sexDisplay}`);
 }
 
 function tryConception(messageText) {
     const settings = getSettings();
     if (!settings.automation.autoConception) return;
+    if (!messageText) return;
 
     const lower = messageText.toLowerCase();
     const isInside = matchesAny(lower, settings.triggers.conceptionKeywords);
     const isVaginal = matchesAny(lower, settings.triggers.vaginalKeywords);
 
     if (!isInside || !isVaginal) return;
+    if (settings.pregnancy.isPregnant) return;
+
+    const now = Date.now();
+    if (now - settings.lastTriggerTime < settings.triggerCooldown) return;
+    settings.lastTriggerTime = now;
 
     const fertileRoll = rollD100();
     let chance = settings.fertility.baseFertility;
@@ -219,64 +300,95 @@ function tryConception(messageText) {
 
     if (fertileRoll <= chance) {
         initiatePregnancy();
-        sendSystemMessage("🤰 БРОСОК НА ЗАЧАТИЕ: зачатие произошло.");
     } else {
-        sendSystemMessage("🤰 БРОСОК НА ЗАЧАТИЕ: в этот раз беременность не наступила.");
+        addMessage("System", `🤰 <b>БРОСОК НА ЗАЧАТИЕ:</b> ❌ На этот раз беременность не наступила. (Шанс был: ${chance.toFixed(1)}%)`);
     }
+
+    saveSettingsDebounced();
 }
 
-// ---------- ЛОГИКА ИППП (очень упрощённо) ----------
+// ---------- ЛОГИКА ИППП ----------
 
 function trySTICheck(messageText) {
     const settings = getSettings();
     if (!settings.automation.autoSTICheck || !settings.sti.enabled) return;
+    if (!messageText) return;
 
     const lower = messageText.toLowerCase();
     const isSex = matchesAny(lower, settings.triggers.sexKeywords);
 
     if (!isSex) return;
 
+    const now = Date.now();
+    if (now - settings.lastTriggerTime < settings.triggerCooldown) return;
+
     const roll = rollD100();
     let risk = 10;
 
     if (settings.contraception.condom) {
-        risk *= 0.3;
+        risk = Math.max(risk * 0.3, 2);
     }
 
     if (roll <= risk) {
-        settings.sti.infected = ["generic"];
+        const stiTypes = ["Хламидиоз", "Гонорея", "Герпес", "ВПЧ"];
+        const randomSTI = stiTypes[Math.floor(Math.random() * stiTypes.length)];
+        settings.sti.infected = [randomSTI];
         saveSettingsDebounced();
-        sendSystemMessage("🔬 ПРОВЕРКА ИППП: возможное заражение, наблюдайте симптомы.");
+        addMessage("System", `🔬 <b>ПРОВЕРКА ИППП:</b> ⚠️ Возможное заражение!\n<b>Заболевание:</b> ${randomSTI}\n<b>Наблюдайте симптомы...</b>`);
     } else {
-        sendSystemMessage("🔬 ПРОВЕРКА ИППП: признаков заражения нет.");
+        addMessage("System", `🔬 <b>ПРОВЕРКА ИППП:</b> ✅ Признаков заражения не обнаружено.`);
     }
-}
 
-// ---------- ВСПОМОГАТЕЛЬНОЕ: отправка системных сообщений ----------
-
-function sendSystemMessage(text) {
-    // SillyTavern даёт API для добавления сообщений — тут надо использовать тот, что есть у тебя в старом index.js.
-    // В простом варианте делаем console.log, чтобы не ломать ничего.
-    console.log("[ReproHealth]", text);
+    saveSettingsDebounced();
 }
 
 // ---------- ОБРАБОТКА НОВЫХ СООБЩЕНИЙ ----------
 
 function onMessage(data) {
-    if (!data || !data.message) return;
-    const text = data.message;
+    if (!data) return;
 
-    tryConception(text);
-    trySTICheck(text);
+    const messageText = data.message || data.mes || "";
+    if (!messageText || messageText.length < 5) return;
+
+    tryConception(messageText);
+    trySTICheck(messageText);
 }
-
-eventSource.on(event_types.MESSAGE_RECEIVED, onMessage);
-eventSource.on(event_types.MESSAGE_SENT, onMessage);
 
 // ---------- ИНИЦИАЛИЗАЦИЯ ----------
 
-(function init() {
+function initialize() {
+    console.log("[ReproHealth] Initializing...");
     getSettings();
-    renderPanel();
-    console.log("[ReproHealth] initialized");
-})();
+
+    setTimeout(() => {
+        renderPanel();
+        console.log("[ReproHealth] Panel rendered");
+    }, 1000);
+
+    eventSource.on(event_types.MESSAGE_RECEIVED, onMessage);
+    eventSource.on(event_types.MESSAGE_SENT, onMessage);
+
+    console.log("[ReproHealth] Event listeners attached");
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initialize);
+} else {
+    initialize();
+}
+
+if (eventSource) {
+    eventSource.on(event_types.APP_READY, () => {
+        console.log("[ReproHealth] APP_READY event");
+        setTimeout(renderPanel, 500);
+    });
+}
+
+window.ReproHealth = {
+    getSettings,
+    renderPanel,
+    rollD100,
+    initiatePregnancy,
+    tryConception,
+    trySTICheck
+};
