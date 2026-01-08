@@ -1,0 +1,134 @@
+/* Reproductive Health System - Styles */
+
+#reprohealth-settings {
+    margin-top: 10px;
+}
+
+#reprohealth-settings .inline-drawer-content {
+    padding: 10px;
+}
+
+.reprohealth-setting {
+    margin: 8px 0;
+}
+
+.reprohealth-setting label {
+    display: block;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.reprohealth-setting input[type="number"],
+.reprohealth-setting select {
+    width: 100%;
+    padding: 5px;
+    border-radius: 4px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    background: var(--SmartThemeBlurTintColor);
+    color: var(--SmartThemeBodyColor);
+}
+
+.reprohealth-setting .checkbox_label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.reprohealth-setting .checkbox_label input {
+    width: 18px;
+    height: 18px;
+}
+
+#reprohealth-settings h4 {
+    margin: 15px 0 10px 0;
+    color: var(--SmartThemeQuoteColor);
+    font-size: 14px;
+}
+
+#reprohealth-settings hr {
+    border: none;
+    border-top: 1px solid var(--SmartThemeBorderColor);
+    margin: 15px 0;
+}
+
+.reprohealth-status {
+    background: var(--SmartThemeBlurTintColor);
+    border-radius: 8px;
+    padding: 10px;
+    margin: 10px 0;
+}
+
+.reprohealth-status p {
+    margin: 5px 0;
+    font-size: 13px;
+}
+
+.reprohealth-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 15px;
+}
+
+.reprohealth-buttons button {
+    flex: 1;
+    min-width: 100px;
+    padding: 8px 12px;
+    font-size: 12px;
+}
+
+/* Цветовые индикаторы статуса */
+.reprohealth-status-high {
+    color: #ff6b6b;
+}
+
+.reprohealth-status-normal {
+    color: #51cf66;
+}
+
+.reprohealth-status-warning {
+    color: #ffd43b;
+}
+
+/* Стили для вывода в чат */
+.reprohealth-output {
+    background: rgba(0, 0, 0, 0.2);
+    border-left: 3px solid var(--SmartThemeQuoteColor);
+    padding: 10px;
+    margin: 10px 0;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 13px;
+    white-space: pre-wrap;
+}
+
+.reprohealth-output.conception-success {
+    border-left-color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.1);
+}
+
+.reprohealth-output.conception-fail {
+    border-left-color: #51cf66;
+    background: rgba(81, 207, 102, 0.1);
+}
+
+.reprohealth-output.sti-warning {
+    border-left-color: #ffd43b;
+    background: rgba(255, 212, 59, 0.1);
+}
+
+.reprohealth-output.sti-safe {
+    border-left-color: #51cf66;
+}
+
+/* Анимация для важных событий */
+@keyframes reprohealth-pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+.reprohealth-important {
+    animation: reprohealth-pulse 1s ease-in-out 3;
+}
