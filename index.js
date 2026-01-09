@@ -620,9 +620,12 @@ function processMessage(text, charName) {
     
     if (output) {
         setTimeout(() => injectToChat(output), 200);
+        injectPrompt(); // Update prompt after events
     }
     updateStatusPanel();
 }
+
+const processedMessages = new Set();
 
 function onChatMessage(messageIndex) {
     try {
@@ -631,6 +634,17 @@ function onChatMessage(messageIndex) {
         
         const msg = context.chat[messageIndex];
         if (!msg || msg.is_user) return;
+        
+        // Защита от двойной обработки
+        const msgId = `${messageIndex}-${msg.mes?.length || 0}`;
+        if (processedMessages.has(msgId)) return;
+        processedMessages.add(msgId);
+        
+        // Очищаем старые ID чтобы не забивать память
+        if (processedMessages.size > 50) {
+            const arr = Array.from(processedMessages);
+            arr.slice(0, 25).forEach(id => processedMessages.delete(id));
+        }
         
         const charName = context.name2 || 'Partner';
         processMessage(msg.mes || '', charName);
@@ -711,27 +725,27 @@ function bindEvents() {
     const el = (id) => document.querySelector(id);
     const s = () => getSettings();
     
-    el('#rh-enabled')?.addEventListener('change', function() { s().enabled = this.checked; saveSettings(); });
-    el('#rh-lang')?.addEventListener('change', function() { s().language = this.value; saveSettings(); updateStatusPanel(); });
-    el('#rh-condom')?.addEventListener('change', function() { s().contraception.condom = this.checked; saveSettings(); updateStatusPanel(); });
-    el('#rh-pill')?.addEventListener('change', function() { s().contraception.pill = this.checked; if(!this.checked) s().contraception.pillDaysTaken=0; saveSettings(); });
-    el('#rh-iud')?.addEventListener('change', function() { s().contraception.iud = this.checked; saveSettings(); });
-    el('#rh-implant')?.addEventListener('change', function() { s().contraception.implant = this.checked; saveSettings(); });
-    el('#rh-cycle-day')?.addEventListener('change', function() { s().fertility.cycleDay = parseInt(this.value)||1; updateCycle(); saveSettings(); updateStatusPanel(); });
+    el('#rh-enabled')?.addEventListener('change', function() { s().enabled = this.checked; saveSettings(); injectPrompt(); });
+    el('#rh-lang')?.addEventListener('change', function() { s().language = this.value; saveSettings(); updateStatusPanel(); injectPrompt(); });
+    el('#rh-condom')?.addEventListener('change', function() { s().contraception.condom = this.checked; saveSettings(); updateStatusPanel(); injectPrompt(); });
+    el('#rh-pill')?.addEventListener('change', function() { s().contraception.pill = this.checked; if(!this.checked) s().contraception.pillDaysTaken=0; saveSettings(); injectPrompt(); });
+    el('#rh-iud')?.addEventListener('change', function() { s().contraception.iud = this.checked; saveSettings(); injectPrompt(); });
+    el('#rh-implant')?.addEventListener('change', function() { s().contraception.implant = this.checked; saveSettings(); injectPrompt(); });
+    el('#rh-cycle-day')?.addEventListener('change', function() { s().fertility.cycleDay = parseInt(this.value)||1; updateCycle(); saveSettings(); updateStatusPanel(); injectPrompt(); });
     el('#rh-base-fert')?.addEventListener('change', function() { s().fertility.baseFertility = parseInt(this.value)||25; saveSettings(); });
     el('#rh-sti')?.addEventListener('change', function() { s().sti.enabled = this.checked; saveSettings(); });
     
-    el('#rh-advance-day')?.addEventListener('click', () => { advanceCycle(1); updateStatusPanel(); loadUI(); });
+    el('#rh-advance-day')?.addEventListener('click', () => { advanceCycle(1); updateStatusPanel(); loadUI(); injectPrompt(); });
     el('#rh-reset-preg')?.addEventListener('click', () => {
         if(confirm('Сбросить беременность?')) {
             s().pregnancy = JSON.parse(JSON.stringify(defaultSettings.pregnancy));
-            saveSettings(); updateStatusPanel();
+            saveSettings(); updateStatusPanel(); injectPrompt();
         }
     });
     el('#rh-reset-all')?.addEventListener('click', () => {
         if(confirm('Сбросить ВСЁ?')) {
             extension_settings[extensionName] = JSON.parse(JSON.stringify(defaultSettings));
-            saveSettings(); loadUI(); updateStatusPanel();
+            saveSettings(); loadUI(); updateStatusPanel(); injectPrompt();
         }
     });
 }
@@ -792,6 +806,87 @@ function updateStatusPanel() {
 
 window.ReproHealth = { rollD100, trueRandom, attemptConception, getPregnancyStatus, checkSTI, advanceCycle, getFertilityModifier, analyzeMessage, getSettings };
 
+function getSystemPromptInjection() {
+    const s = getSettings();
+    if (!s || !s.enabled) return '';
+    
+    const lang = s.language;
+    let lines = [];
+    
+    // Контрацепция - только ВИДИМОЕ для НПС
+    // Презерватив - видно, спираль/имплант/таблетки - НЕ видно
+    if (s.contraception.condom) {
+        lines.push(lang === 'ru' 
+            ? `[На партнёре надет презерватив]`
+            : `[Partner is wearing a condom]`);
+    }
+    
+    // Цикл - только если ВИДНО (месячные, явные симптомы ПМС)
+    const day = s.fertility.cycleDay;
+    if (s.menstruation.isActive) {
+        lines.push(lang === 'ru' 
+            ? `[У неё сейчас месячные]`
+            : `[She is currently on her period]`);
+    } else if (s.menstruation.isPMS && s.menstruation.symptoms.length > 0) {
+        // ПМС видно по поведению
+        lines.push(lang === 'ru'
+            ? `[Она выглядит ${s.menstruation.symptoms.slice(0,2).join(', ')}]`
+            : `[She seems ${s.menstruation.symptoms.slice(0,2).join(', ')}]`);
+    }
+    // Овуляцию НПС НЕ видит - это внутренний процесс
+    
+    // Беременность - ТОЛЬКО если есть ВИДИМЫЕ признаки
+    if (s.pregnancy.isPregnant) {
+        const ps = getPregnancyStatus();
+        const weeks = ps?.weeks || 0;
+        
+        if (weeks >= 16) {
+            // Живот явно виден - беременность очевидна
+            const count = ps?.babies?.length || 1;
+            const sizeText = weeks >= 28 ? (lang === 'ru' ? 'большой' : 'large') : 
+                            weeks >= 20 ? (lang === 'ru' ? 'заметный' : 'noticeable') :
+                            (lang === 'ru' ? 'округлившийся' : 'rounded');
+            lines.push(lang === 'ru'
+                ? `[У неё ${sizeText} беременный живот${count > 1 ? ', беременность многоплодная' : ''}]`
+                : `[She has a ${sizeText} pregnant belly${count > 1 ? ', carrying multiples' : ''}]`);
+        } else if (weeks >= 12) {
+            // Живот начинает округляться - можно заподозрить
+            lines.push(lang === 'ru'
+                ? `[Её живот немного округлился]`
+                : `[Her belly is slightly rounded]`);
+        } else if (weeks >= 4) {
+            // Только симптомы - тошнота, усталость (НПС не знает что это беременность)
+            lines.push(lang === 'ru'
+                ? `[Она выглядит уставшей, её иногда тошнит]`
+                : `[She looks tired, sometimes feels nauseous]`);
+        }
+        // До 4 недель - НИЧЕГО не видно, НПС не знает
+    }
+    
+    // ИППП - только если есть видимые симптомы (герпес, например)
+    const visibleSTI = s.sti.userInfections.filter(x => ['herpes', 'syphilis'].includes(x));
+    if (visibleSTI.length > 0) {
+        lines.push(lang === 'ru'
+            ? `[На теле есть подозрительные высыпания]`
+            : `[There are suspicious rashes on her body]`);
+    }
+    
+    return lines.length > 0 ? '\n' + lines.join('\n') : '';
+}
+
+function injectPrompt() {
+    try {
+        const context = window.SillyTavern?.getContext?.();
+        if (!context?.setExtensionPrompt) return;
+        
+        const injection = getSystemPromptInjection();
+        context.setExtensionPrompt(extensionName, injection, 1, 0); // position 1 = after main prompt
+        console.log('[ReproHealth] Prompt injected:', injection);
+    } catch (e) {
+        console.log('[ReproHealth] Prompt injection not available');
+    }
+}
+
 (function init() {
     console.log('[ReproHealth] Init...');
     
@@ -831,4 +926,7 @@ window.ReproHealth = { rollD100, trueRandom, attemptConception, getPregnancyStat
     }, 3000);
     
     console.log('[ReproHealth] Loaded!');
+    
+    // Inject prompt on init
+    setTimeout(injectPrompt, 4000);
 })();
