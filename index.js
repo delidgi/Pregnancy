@@ -350,6 +350,7 @@ function onMessageReceived() {
             if (aiCycleDay >= 1 && aiCycleDay <= 28) {
                 s.cycleDay = aiCycleDay;
                 saveSettingsDebounced();
+                syncUI();
                 console.log('[Reproductive] Cycle day from AI:', aiCycleDay);
             }
         }
@@ -623,6 +624,22 @@ function setupUI() {
                 </div>
             </div>
             
+            <div id="repro-manual-pregnancy" style="display: none; margin-top: 10px; padding: 10px; background: rgba(255,159,243,0.1); border-radius: 5px;">
+                <label style="font-size: 12px; opacity: 0.8;">Ручная установка:</label>
+                <div class="flex-container" style="gap: 5px; margin-top: 5px;">
+                    <select id="repro-manual-count" class="text_pole" style="width: 80px;">
+                        <option value="1">1 плод</option>
+                        <option value="2">Двойня</option>
+                        <option value="3">Тройня</option>
+                    </select>
+                    <button id="repro-setpregnant" class="menu_button" style="padding: 5px 10px; background: #ff9ff3;">🤰 Установить</button>
+                </div>
+            </div>
+            
+            <button id="repro-toggle-manual" class="menu_button" style="margin-top: 10px; opacity: 0.6; font-size: 11px;">
+                Ручная беременность
+            </button>
+            
             <button id="repro-reset" class="menu_button redWarningBG" style="display: none; margin-top: 10px;">
                 ${L('reset')}
             </button>
@@ -658,7 +675,7 @@ function setupUI() {
         });
         
         $('#repro-notify').on('change', function() {
-            getSettings().isEnabled = this.checked;
+            getSettings().showNotifications = this.checked;
             saveSettingsDebounced();
         });
         
@@ -681,7 +698,6 @@ function setupUI() {
             s.cycleDay = clamped;
             
             console.log('[Reproductive] Cycle day set to:', clamped);
-            console.log('[Reproductive] Settings object:', s);
             
             saveSettingsDebounced();
             
@@ -690,6 +706,39 @@ function setupUI() {
                 syncUI();
                 showNotification(`День цикла: ${clamped}`, 'info');
             }, 100);
+        });
+        
+        $('#repro-toggle-manual').on('click', function() {
+            const manualDiv = $('#repro-manual-pregnancy');
+            if (manualDiv.is(':visible')) {
+                manualDiv.slideUp(200);
+            } else {
+                manualDiv.slideDown(200);
+            }
+        });
+        
+        $('#repro-setpregnant').on('click', function() {
+            const s = getSettings();
+            const count = parseInt($('#repro-manual-count').val());
+            
+            s.isPregnant = true;
+            s.conceptionDate = new Date().toISOString();
+            s.fetusCount = count;
+            s.fetusSex = [];
+            
+            for (let i = 0; i < count; i++) {
+                const sexRoll = roll(2);
+                s.fetusSex.push(sexRoll === 1 ? 'M' : 'F');
+            }
+            
+            saveSettingsDebounced();
+            updatePromptInjection();
+            syncUI();
+            
+            const sexText = s.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
+            showNotification(`🤰 Беременность установлена! Плодов: ${count}, пол: ${sexText}`, 'success');
+            
+            $('#repro-manual-pregnancy').slideUp(200);
         });
         
         $('#repro-reset').on('click', function() {
@@ -761,3 +810,4 @@ jQuery(async () => {
         console.error('[Reproductive] System FATAL ERROR:', error);
     }
 });
+
