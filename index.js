@@ -420,12 +420,12 @@ function updatePromptInjection() {
         
         console.log('[Reproductive] Injecting prompt, length:', fullPrompt.length);
         
-        // Инжектим с высоким приоритетом (ближе к последнему сообщению)
+        // Инжектим с приоритетом 0 (как chaos_twist)
         setExtensionPrompt(
             extensionName,
             fullPrompt,
             extension_prompt_types.IN_CHAT,
-            9999  // Высокий приоритет = ближе к концу = AI лучше помнит
+            0
         );
         
         console.log('[Reproductive] Prompt injected successfully');
@@ -732,11 +732,27 @@ jQuery(async () => {
         setupUI();
         console.log('[Reproductive] UI OK');
         
+        // Инжектим сразу
         updatePromptInjection();
-        console.log('[Reproductive] Prompt injection OK');
+        console.log('[Reproductive] Initial prompt injection OK');
         
-        // Слушаем сообщения от AI
+        // Инжектим ПЕРЕД каждым сообщением юзера (чтобы промпт был свежим)
+        eventSource.on(event_types.MESSAGE_SENT, () => {
+            console.log('[Reproductive] MESSAGE_SENT - refreshing prompt');
+            updatePromptInjection();
+        });
+        
+        // Слушаем сообщения от AI для детекции тега
         eventSource.on(event_types.MESSAGE_RECEIVED, onMessageReceived);
+        
+        // Также обновляем при смене чата (если событие существует)
+        if (event_types.CHAT_CHANGED) {
+            eventSource.on(event_types.CHAT_CHANGED, () => {
+                console.log('[Reproductive] CHAT_CHANGED - refreshing prompt');
+                updatePromptInjection();
+                syncUI();
+            });
+        }
         
         console.log('[Reproductive System] ✓ Ready! AI will trigger [CONCEPTION_CHECK] tag.');
     } catch (error) {
