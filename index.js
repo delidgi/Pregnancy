@@ -3,8 +3,7 @@ import {
     event_types,
     saveSettingsDebounced,
     setExtensionPrompt,
-    extension_prompt_types,
-    getContext
+    extension_prompt_types
 } from '../../../../script.js';
 import { 
     extension_settings
@@ -260,8 +259,11 @@ function onMessageReceived() {
     const s = getSettings();
     if (!s.isEnabled) return;
     
-    const context = getContext();
-    const lastMessage = context.chat?.[context.chat.length - 1];
+    // Получаем последнее сообщение из глобального chat (доступен в SillyTavern)
+    const chatArray = typeof chat !== 'undefined' ? chat : window.chat;
+    if (!chatArray || chatArray.length === 0) return;
+    
+    const lastMessage = chatArray[chatArray.length - 1];
     
     if (!lastMessage || lastMessage.is_user) return;
     
