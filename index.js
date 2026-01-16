@@ -1317,7 +1317,7 @@ jQuery(async () => {
         eventSource.on(event_types.MESSAGE_RECEIVED, onMessageReceived);
 
        if (event_types.CHAT_CHANGED) { 
-    eventSource.on(event_types.CHAT_CHANGED, async () => {  // ← добавь async
+    eventSource.on(event_types.CHAT_CHANGED, async () => {
         console.log('[Reproductive] CHAT_CHANGED - refreshing prompt');
         await setGlobalVariable('pregnant', 'false');
         await setGlobalVariable('conception_date', '');
