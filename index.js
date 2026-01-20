@@ -657,7 +657,19 @@ function checkConception() {
 
     if (success) {
         p.isPregnant = true;
-        p.conceptionDate = new Date().toISOString();
+        
+        // --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
+        // Если есть распаршенная RP-дата, используем её как дату зачатия
+        if (p.rpDate) {
+            p.conceptionDate = p.rpDate;
+            console.log(`[Reproductive] Conception date set to RP date: ${p.conceptionDate}`);
+        } else {
+            // Иначе используем реальное время
+            p.conceptionDate = new Date().toISOString();
+            console.log(`[Reproductive] Conception date set to Real time (fallback): ${p.conceptionDate}`);
+        }
+        // -----------------------
+
         p.pregnancyWeeks = 0;
         s.totalConceptions++;
 
