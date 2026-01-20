@@ -15,7 +15,6 @@ function getSeededRandomSymptoms(arr, count, seed) {
 
 const extensionName = 'reproductive-system';
 
-// Глобальные настройки (общие для всех чатов)
 const defaultSettings = {
     isEnabled: true,
     showNotifications: true,
@@ -26,11 +25,9 @@ const defaultSettings = {
     totalChecks: 0,
     totalConceptions: 0,
     currentChatId: null,
-    // Per-chat данные беременности: { chatId: pregnancyData }
     chatPregnancyData: {}
 };
 
-// Данные беременности для конкретного чата
 const defaultPregnancyData = {
     isPregnant: false,
     conceptionDate: null,
@@ -110,7 +107,6 @@ function getSettings() {
     return extension_settings[extensionName];
 }
 
-// Получение ID текущего чата
 function getCurrentChatId() {
     try {
         const context = typeof SillyTavern?.getContext === 'function' 
@@ -122,25 +118,21 @@ function getCurrentChatId() {
     }
 }
 
-// Получение данных беременности для текущего чата
 function getPregnancyData() {
     const s = getSettings();
     const chatId = getCurrentChatId();
     
     if (!chatId) {
-        // Нет активного чата - возвращаем временные данные
         if (!s._tempPregnancyData) {
             s._tempPregnancyData = structuredClone(defaultPregnancyData);
         }
         return s._tempPregnancyData;
     }
-    
-    // Инициализируем хранилище если нет
+
     if (!s.chatPregnancyData) {
         s.chatPregnancyData = {};
     }
-    
-    // Инициализируем данные для этого чата если нет
+
     if (!s.chatPregnancyData[chatId]) {
         s.chatPregnancyData[chatId] = structuredClone(defaultPregnancyData);
     }
@@ -175,7 +167,6 @@ function getCycleModifier(day) {
     return CHANCES.cycleModifier['1-7'].low;
 }
 
-// Парсинг РП-даты с поддержкой множества форматов
 function parseRpDate(text) {
     const monthsRu = {
         'январ': 0, 'феврал': 1, 'март': 2, 'апрел': 3, 'ма': 4, 'июн': 5,
@@ -187,11 +178,7 @@ function parseRpDate(text) {
     };
     
     let parsedDate = null;
-    
-    // 1. Попытка найти формат "День Месяц Год" (наиболее частый в ру-сегменте)
-    // Ловит: "22 Июня 2024", "Суббота, 22 Июня 2024", "22.06.2024" внутри строки даты
-    
-    // Ищем паттерн DD Month YYYY (с учетом возможного дня недели перед ним)
+
     const dayMonthYearMatch = text.match(/(?:[Дд]ата|[Dd]ate).*?(\d{1,2})\s+([А-Яа-яA-Za-z]+),?\s+(\d{4})/i);
     
     if (dayMonthYearMatch) {
@@ -216,7 +203,6 @@ function parseRpDate(text) {
         }
     }
 
-    // 2. Формат: "Месяц День, Год" (Date: June 22, 2024)
     const longFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate)[:\s]+(?:[А-Яа-яA-Za-z]+,?\s*)?([А-Яа-яA-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})/i);
     if (longFormatMatch) {
         const monthStr = longFormatMatch[1].toLowerCase();
@@ -239,8 +225,7 @@ function parseRpDate(text) {
             return parsedDate;
         }
     }
-    
-    // 3. Формат DD.MM.YYYY или DD/MM/YYYY
+   
     const shortFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate).*?(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})/i);
     if (shortFormatMatch) {
         const day = parseInt(shortFormatMatch[1]);
@@ -253,8 +238,7 @@ function parseRpDate(text) {
             return parsedDate;
         }
     }
-    
-    // 4. Формат ISO: 2024-02-20
+
     const isoFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate)[:\s]+(\d{4})-(\d{2})-(\d{2})/i);
     if (isoFormatMatch) {
         const year = parseInt(isoFormatMatch[1]);
@@ -271,14 +255,12 @@ function parseRpDate(text) {
     return parsedDate;
 }
 
-// Вычисление даты зачатия: РП-дата минус срок в неделях
 function calculateConceptionDate(rpDate, weeksPregnant) {
     if (!rpDate || weeksPregnant <= 0) return null;
     const conceptionTime = rpDate.getTime() - (weeksPregnant * 7 * 24 * 60 * 60 * 1000);
     return new Date(conceptionTime);
 }
 
-// Правильный расчёт ПДР: дата зачатия + 40 недель
 function calculateDueDate(conceptionDate) {
     if (conceptionDate) {
         const conception = new Date(conceptionDate);
@@ -295,7 +277,6 @@ function parseAIStatus(text) {
 
     console.log('[Reproductive] Parsing AI status block...');
 
-    // Парсим РП-дату
     const rpDate = parseRpDate(text);
     if (rpDate) {
         const oldRpDate = p.rpDate;
@@ -306,7 +287,6 @@ function parseAIStatus(text) {
         }
     }
 
-    // Парсим день цикла
     const cycleDayPatterns = [
         /[Дд]ень\s+(?:цикла[:\s]+)?(\d+)/i,
         /[Цц]икл[:\s]+(?:[Дд]ень\s+)?(\d+)/i,
@@ -330,7 +310,6 @@ function parseAIStatus(text) {
         }
     }
 
-    // Детекция родов
     const birthPatterns = [
         /[Рр]од(?:ы|ила|ился|ились)|[Рр]ождени[еяю]/i,
         /[Pp]ush(?:ing|ed)|[Dd]eliver(?:y|ed|ing)|[Gg]ave\s+birth|[Bb]irth/i,
@@ -347,8 +326,7 @@ function parseAIStatus(text) {
                 const sexIcons = p.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
                 showNotification(`🎉 Роды состоялись! ${p.fetusCount > 1 ? p.fetusCount + ' малышей' : 'Малыш'}: ${sexIcons}`, 'success');
             }
-            
-            // Сброс беременности после родов
+
             Object.assign(p, structuredClone(defaultPregnancyData));
             updated = true;
             
@@ -359,7 +337,6 @@ function parseAIStatus(text) {
         }
     }
 
-    // Парсим срок беременности
     const pregnancyPatterns = [
         /[Бб]еременност[ьи][^\n]{0,30}[\(:\s]+(\d+)\s*недел/i,
         /[Сс][Рр][Оо][Кк][:\s]+(\d+)\s*недел/i,
@@ -380,8 +357,7 @@ function parseAIStatus(text) {
             break;
         }
     }
-    
-    // Парсим количество плодов
+
     let detectedFetusCount = null;
     if (/[Дд]войн[яеи]|[Tt]wins?/i.test(text)) {
         detectedFetusCount = 2;
@@ -420,7 +396,6 @@ function parseAIStatus(text) {
                 showNotification(`🔄 Синхронизировано: ${weeks} нед. | ${fetusText} | Пол: ${sexIcons}`, 'info');
             }
         } else {
-            // Уже беременна - обновляем срок если отличается
             if (detectedFetusCount && detectedFetusCount !== p.fetusCount) {
                 p.fetusCount = detectedFetusCount;
                 while (p.fetusSex.length < p.fetusCount) {
@@ -449,7 +424,6 @@ function parseAIStatus(text) {
         }
     }
 
-    // Проверка "не беременна"
     if (/[Нн]е\s+беременна|[Nn]ot\s+pregnant/i.test(text) && p.isPregnant) {
         console.log('[Reproductive] AI says not pregnant. Clearing...');
         Object.assign(p, structuredClone(defaultPregnancyData));
@@ -657,18 +631,15 @@ function checkConception() {
 
     if (success) {
         p.isPregnant = true;
-        
-        // --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
-        // Если есть распаршенная RP-дата, используем её как дату зачатия
+
         if (p.rpDate) {
             p.conceptionDate = p.rpDate;
             console.log(`[Reproductive] Conception date set to RP date: ${p.conceptionDate}`);
         } else {
-            // Иначе используем реальное время
             p.conceptionDate = new Date().toISOString();
             console.log(`[Reproductive] Conception date set to Real time (fallback): ${p.conceptionDate}`);
         }
-        // -----------------------
+
 
         p.pregnancyWeeks = 0;
         s.totalConceptions++;
@@ -1374,15 +1345,12 @@ function loadSettings() {
         if (!extension_settings[extensionName]) {
             extension_settings[extensionName] = structuredClone(defaultSettings);
         } else {
-            // Миграция старых настроек в новую структуру
             const s = extension_settings[extensionName];
-            
-            // Если есть старые данные беременности в корне - мигрируем
+
             if (s.isPregnant !== undefined && !s.chatPregnancyData) {
                 console.log('[Reproductive] Migrating old pregnancy data to per-chat structure...');
                 s.chatPregnancyData = {};
-                
-                // Если была беременность - пытаемся сохранить для текущего чата
+
                 if (s.isPregnant) {
                     const chatId = getCurrentChatId();
                     if (chatId) {
@@ -1399,8 +1367,7 @@ function loadSettings() {
                         };
                     }
                 }
-                
-                // Удаляем старые поля из корня
+
                 delete s.isPregnant;
                 delete s.conceptionDate;
                 delete s.pregnancyWeeks;
@@ -1411,8 +1378,7 @@ function loadSettings() {
                 delete s.healthStatus;
                 delete s.lastComplicationCheck;
             }
-            
-            // Добавляем недостающие поля
+
             for (const key in defaultSettings) {
                 if (s[key] === undefined) {
                     s[key] = defaultSettings[key];
@@ -1449,14 +1415,12 @@ jQuery(async () => {
 
         eventSource.on(event_types.MESSAGE_RECEIVED, onMessageReceived);
 
-        // При смене чата - просто обновляем UI для нового чата (данные хранятся per-chat)
         if (event_types.CHAT_CHANGED) { 
             eventSource.on(event_types.CHAT_CHANGED, () => {
                 console.log('[Reproductive] CHAT_CHANGED - switching to chat-specific data');
                 const chatId = getCurrentChatId();
                 console.log('[Reproductive] Current chat ID:', chatId);
-                
-                // Просто обновляем UI - данные автоматически подтянутся из chatPregnancyData
+
                 syncUI();
                 updatePromptInjection();
             }); 
