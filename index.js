@@ -188,8 +188,36 @@ function parseRpDate(text) {
     
     let parsedDate = null;
     
-    // Формат: "Дата: Вторник, Февраль 20, 2024" или "Date: Tuesday, February 20, 2024"
-    const longFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate)[:\s]+[А-Яа-яA-Za-z]+,?\s*([А-Яа-яA-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})/i);
+    // 1. Попытка найти формат "День Месяц Год" (наиболее частый в ру-сегменте)
+    // Ловит: "22 Июня 2024", "Суббота, 22 Июня 2024", "22.06.2024" внутри строки даты
+    
+    // Ищем паттерн DD Month YYYY (с учетом возможного дня недели перед ним)
+    const dayMonthYearMatch = text.match(/(?:[Дд]ата|[Dd]ate).*?(\d{1,2})\s+([А-Яа-яA-Za-z]+),?\s+(\d{4})/i);
+    
+    if (dayMonthYearMatch) {
+        const day = parseInt(dayMonthYearMatch[1]);
+        const monthStr = dayMonthYearMatch[2].toLowerCase();
+        const year = parseInt(dayMonthYearMatch[3]);
+        
+        let month = -1;
+        for (const [key, val] of Object.entries(monthsRu)) {
+            if (monthStr.startsWith(key)) { month = val; break; }
+        }
+        if (month === -1) {
+            for (const [key, val] of Object.entries(monthsEn)) {
+                if (monthStr.startsWith(key)) { month = val; break; }
+            }
+        }
+        
+        if (month !== -1 && day >= 1 && day <= 31) {
+            parsedDate = new Date(year, month, day);
+            console.log(`[Reproductive] Parsed RP date (Day Month Year): ${parsedDate.toISOString()}`);
+            return parsedDate;
+        }
+    }
+
+    // 2. Формат: "Месяц День, Год" (Date: June 22, 2024)
+    const longFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate)[:\s]+(?:[А-Яа-яA-Za-z]+,?\s*)?([А-Яа-яA-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})/i);
     if (longFormatMatch) {
         const monthStr = longFormatMatch[1].toLowerCase();
         const day = parseInt(longFormatMatch[2]);
@@ -207,87 +235,36 @@ function parseRpDate(text) {
         
         if (month !== -1 && day >= 1 && day <= 31) {
             parsedDate = new Date(year, month, day);
-            console.log(`[Reproductive] Parsed RP date (long format): ${parsedDate.toISOString()}`);
+            console.log(`[Reproductive] Parsed RP date (Month Day Year): ${parsedDate.toISOString()}`);
+            return parsedDate;
         }
     }
     
-    // Формат DD.MM.YYYY или DD/MM/YYYY
-    if (!parsedDate) {
-        const shortFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate)[:\s]+(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})/i);
-        if (shortFormatMatch) {
-            const day = parseInt(shortFormatMatch[1]);
-            const month = parseInt(shortFormatMatch[2]) - 1;
-            const year = parseInt(shortFormatMatch[3]);
-            
-            if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
-                parsedDate = new Date(year, month, day);
-                console.log(`[Reproductive] Parsed RP date (short format DD.MM.YYYY): ${parsedDate.toISOString()}`);
-            }
+    // 3. Формат DD.MM.YYYY или DD/MM/YYYY
+    const shortFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate).*?(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})/i);
+    if (shortFormatMatch) {
+        const day = parseInt(shortFormatMatch[1]);
+        const month = parseInt(shortFormatMatch[2]) - 1;
+        const year = parseInt(shortFormatMatch[3]);
+        
+        if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+            parsedDate = new Date(year, month, day);
+            console.log(`[Reproductive] Parsed RP date (short format): ${parsedDate.toISOString()}`);
+            return parsedDate;
         }
     }
     
-    // Формат ISO: 2024-02-20
-    if (!parsedDate) {
-        const isoFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate)[:\s]+(\d{4})-(\d{2})-(\d{2})/i);
-        if (isoFormatMatch) {
-            const year = parseInt(isoFormatMatch[1]);
-            const month = parseInt(isoFormatMatch[2]) - 1;
-            const day = parseInt(isoFormatMatch[3]);
-            
-            if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
-                parsedDate = new Date(year, month, day);
-                console.log(`[Reproductive] Parsed RP date (ISO format): ${parsedDate.toISOString()}`);
-            }
-        }
-    }
-    
-    // Формат: "20 февраля 2024" или "20th February 2024"
-    if (!parsedDate) {
-        const dateOnlyMatch = text.match(/(\d{1,2})(?:st|nd|rd|th)?\s+([А-Яа-яA-Za-z]+)\s+(\d{4})/);
-        if (dateOnlyMatch) {
-            const day = parseInt(dateOnlyMatch[1]);
-            const monthStr = dateOnlyMatch[2].toLowerCase();
-            const year = parseInt(dateOnlyMatch[3]);
-            
-            let month = -1;
-            for (const [key, val] of Object.entries(monthsRu)) {
-                if (monthStr.startsWith(key)) { month = val; break; }
-            }
-            if (month === -1) {
-                for (const [key, val] of Object.entries(monthsEn)) {
-                    if (monthStr.startsWith(key)) { month = val; break; }
-                }
-            }
-            
-            if (month !== -1 && day >= 1 && day <= 31) {
-                parsedDate = new Date(year, month, day);
-                console.log(`[Reproductive] Parsed RP date (date only): ${parsedDate.toISOString()}`);
-            }
-        }
-    }
-    
-    // Формат: "February 20, 2024"
-    if (!parsedDate) {
-        const monthFirstMatch = text.match(/([А-Яа-яA-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})/);
-        if (monthFirstMatch) {
-            const monthStr = monthFirstMatch[1].toLowerCase();
-            const day = parseInt(monthFirstMatch[2]);
-            const year = parseInt(monthFirstMatch[3]);
-            
-            let month = -1;
-            for (const [key, val] of Object.entries(monthsRu)) {
-                if (monthStr.startsWith(key)) { month = val; break; }
-            }
-            if (month === -1) {
-                for (const [key, val] of Object.entries(monthsEn)) {
-                    if (monthStr.startsWith(key)) { month = val; break; }
-                }
-            }
-            
-            if (month !== -1 && day >= 1 && day <= 31) {
-                parsedDate = new Date(year, month, day);
-                console.log(`[Reproductive] Parsed RP date (month first): ${parsedDate.toISOString()}`);
-            }
+    // 4. Формат ISO: 2024-02-20
+    const isoFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate)[:\s]+(\d{4})-(\d{2})-(\d{2})/i);
+    if (isoFormatMatch) {
+        const year = parseInt(isoFormatMatch[1]);
+        const month = parseInt(isoFormatMatch[2]) - 1;
+        const day = parseInt(isoFormatMatch[3]);
+        
+        if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+            parsedDate = new Date(year, month, day);
+            console.log(`[Reproductive] Parsed RP date (ISO format): ${parsedDate.toISOString()}`);
+            return parsedDate;
         }
     }
     
