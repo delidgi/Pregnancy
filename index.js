@@ -15,26 +15,32 @@ function getSeededRandomSymptoms(arr, count, seed) {
 
 const extensionName = 'reproductive-system';
 
+// Глобальные настройки (общие для всех чатов)
 const defaultSettings = {
     isEnabled: true,
     showNotifications: true,
     language: 'ru',
     contraception: 'none',
+    cycleDay: 1,
+    lastCycleUpdate: null,
+    totalChecks: 0,
+    totalConceptions: 0,
+    currentChatId: null,
+    // Per-chat данные беременности: { chatId: pregnancyData }
+    chatPregnancyData: {}
+};
+
+// Данные беременности для конкретного чата
+const defaultPregnancyData = {
     isPregnant: false,
     conceptionDate: null,
     pregnancyWeeks: 0,
     rpDate: null,
     fetusCount: 1,
     fetusSex: [],
-    cycleDay: 1,
-    lastCycleUpdate: null,
-    totalChecks: 0,
-    totalConceptions: 0,
     complications: [],
     healthStatus: 'normal',
-    lastComplicationCheck: null,
-    // FIX #6: Добавляем ID текущего чата для отслеживания смены чата
-    currentChatId: null
+    lastComplicationCheck: null
 };
 
 const CHANCES = {
@@ -104,6 +110,44 @@ function getSettings() {
     return extension_settings[extensionName];
 }
 
+// Получение ID текущего чата
+function getCurrentChatId() {
+    try {
+        const context = typeof SillyTavern?.getContext === 'function' 
+            ? SillyTavern.getContext() 
+            : window;
+        return context?.chatId || context?.chat_metadata?.chat_id || null;
+    } catch (e) {
+        return null;
+    }
+}
+
+// Получение данных беременности для текущего чата
+function getPregnancyData() {
+    const s = getSettings();
+    const chatId = getCurrentChatId();
+    
+    if (!chatId) {
+        // Нет активного чата - возвращаем временные данные
+        if (!s._tempPregnancyData) {
+            s._tempPregnancyData = structuredClone(defaultPregnancyData);
+        }
+        return s._tempPregnancyData;
+    }
+    
+    // Инициализируем хранилище если нет
+    if (!s.chatPregnancyData) {
+        s.chatPregnancyData = {};
+    }
+    
+    // Инициализируем данные для этого чата если нет
+    if (!s.chatPregnancyData[chatId]) {
+        s.chatPregnancyData[chatId] = structuredClone(defaultPregnancyData);
+    }
+    
+    return s.chatPregnancyData[chatId];
+}
+
 function L(key) {
     try {
         const s = getSettings();
@@ -131,7 +175,7 @@ function getCycleModifier(day) {
     return CHANCES.cycleModifier['1-7'].low;
 }
 
-// FIX #5: Улучшенный парсинг РП-даты с поддержкой большего количества форматов
+// Парсинг РП-даты с поддержкой множества форматов
 function parseRpDate(text) {
     const monthsRu = {
         'январ': 0, 'феврал': 1, 'март': 2, 'апрел': 3, 'ма': 4, 'июн': 5,
@@ -144,7 +188,6 @@ function parseRpDate(text) {
     
     let parsedDate = null;
     
-    // FIX #5: Добавлены дополнительные паттерны для Date/date
     // Формат: "Дата: Вторник, Февраль 20, 2024" или "Date: Tuesday, February 20, 2024"
     const longFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate)[:\s]+[А-Яа-яA-Za-z]+,?\s*([А-Яа-яA-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})/i);
     if (longFormatMatch) {
@@ -168,9 +211,8 @@ function parseRpDate(text) {
         }
     }
     
-    // FIX #5: Расширенные форматы DD.MM.YYYY и MM/DD/YYYY
+    // Формат DD.MM.YYYY или DD/MM/YYYY
     if (!parsedDate) {
-        // DD.MM.YYYY или DD/MM/YYYY
         const shortFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate)[:\s]+(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})/i);
         if (shortFormatMatch) {
             const day = parseInt(shortFormatMatch[1]);
@@ -184,23 +226,7 @@ function parseRpDate(text) {
         }
     }
     
-    // FIX #5: Формат MM/DD/YYYY (американский)
-    if (!parsedDate) {
-        const usFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate)[:\s]+(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
-        if (usFormatMatch) {
-            const month = parseInt(usFormatMatch[1]) - 1;
-            const day = parseInt(usFormatMatch[2]);
-            const year = parseInt(usFormatMatch[3]);
-            
-            // Проверяем, что это скорее MM/DD/YYYY (месяц <= 12)
-            if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
-                parsedDate = new Date(year, month, day);
-                console.log(`[Reproductive] Parsed RP date (US format MM/DD/YYYY): ${parsedDate.toISOString()}`);
-            }
-        }
-    }
-    
-    // Формат: "Дата: 2024-02-20" (ISO)
+    // Формат ISO: 2024-02-20
     if (!parsedDate) {
         const isoFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate)[:\s]+(\d{4})-(\d{2})-(\d{2})/i);
         if (isoFormatMatch) {
@@ -215,7 +241,7 @@ function parseRpDate(text) {
         }
     }
     
-    // FIX #5: Формат без "Дата:" - "20 февраля 2024" или "20th February 2024"
+    // Формат: "20 февраля 2024" или "20th February 2024"
     if (!parsedDate) {
         const dateOnlyMatch = text.match(/(\d{1,2})(?:st|nd|rd|th)?\s+([А-Яа-яA-Za-z]+)\s+(\d{4})/);
         if (dateOnlyMatch) {
@@ -240,7 +266,7 @@ function parseRpDate(text) {
         }
     }
     
-    // Формат: "Месяц ДД, ГГГГ" (February 20, 2024)
+    // Формат: "February 20, 2024"
     if (!parsedDate) {
         const monthFirstMatch = text.match(/([А-Яа-яA-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})/);
         if (monthFirstMatch) {
@@ -271,14 +297,12 @@ function parseRpDate(text) {
 // Вычисление даты зачатия: РП-дата минус срок в неделях
 function calculateConceptionDate(rpDate, weeksPregnant) {
     if (!rpDate || weeksPregnant <= 0) return null;
-    
     const conceptionTime = rpDate.getTime() - (weeksPregnant * 7 * 24 * 60 * 60 * 1000);
     return new Date(conceptionTime);
 }
 
-// FIX #4: Правильный расчёт ПДР на основе даты зачатия
-function calculateDueDate(conceptionDate, rpDate) {
-    // ПДР = дата зачатия + 40 недель (280 дней)
+// Правильный расчёт ПДР: дата зачатия + 40 недель
+function calculateDueDate(conceptionDate) {
     if (conceptionDate) {
         const conception = new Date(conceptionDate);
         const dueDate = new Date(conception.getTime() + (40 * 7 * 24 * 60 * 60 * 1000));
@@ -289,23 +313,23 @@ function calculateDueDate(conceptionDate, rpDate) {
 
 function parseAIStatus(text) {
     const s = getSettings();
+    const p = getPregnancyData();
     let updated = false;
 
     console.log('[Reproductive] Parsing AI status block...');
 
-    // Парсим РП-дату из текста
+    // Парсим РП-дату
     const rpDate = parseRpDate(text);
     if (rpDate) {
-        const oldRpDate = s.rpDate;
-        s.rpDate = rpDate.toISOString();
-        
-        if (oldRpDate !== s.rpDate) {
-            console.log(`[Reproductive] RP date updated: ${s.rpDate}`);
+        const oldRpDate = p.rpDate;
+        p.rpDate = rpDate.toISOString();
+        if (oldRpDate !== p.rpDate) {
+            console.log(`[Reproductive] RP date updated: ${p.rpDate}`);
             updated = true;
         }
     }
 
-    // FIX #5: Расширенный парсинг дня цикла
+    // Парсим день цикла
     const cycleDayPatterns = [
         /[Дд]ень\s+(?:цикла[:\s]+)?(\d+)/i,
         /[Цц]икл[:\s]+(?:[Дд]ень\s+)?(\d+)/i,
@@ -329,35 +353,26 @@ function parseAIStatus(text) {
         }
     }
 
-    // FIX #7: Детекция родов - сброс беременности
+    // Детекция родов
     const birthPatterns = [
         /[Рр]од(?:ы|ила|ился|ились)|[Рр]ождени[еяю]/i,
         /[Pp]ush(?:ing|ed)|[Dd]eliver(?:y|ed|ing)|[Gg]ave\s+birth|[Bb]irth/i,
         /[Мм]алыш\s+родился|[Рр]ебён?ок\s+(?:родился|появился)/i,
-        /[Сс]хватки\s+(?:закончились|прекратились)/i,
         /[Пп]осле\s+родов/i,
         /[Aa]fter\s+(?:the\s+)?birth/i
     ];
     
     for (const pattern of birthPatterns) {
-        if (pattern.test(text) && s.isPregnant && s.pregnancyWeeks >= 36) {
+        if (pattern.test(text) && p.isPregnant && p.pregnancyWeeks >= 36) {
             console.log('[Reproductive] Birth detected! Resetting pregnancy...');
             
             if (s.showNotifications) {
-                const sexIcons = s.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
-                showNotification(`🎉 Роды состоялись! ${s.fetusCount > 1 ? s.fetusCount + ' малышей' : 'Малыш'}: ${sexIcons}`, 'success');
+                const sexIcons = p.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
+                showNotification(`🎉 Роды состоялись! ${p.fetusCount > 1 ? p.fetusCount + ' малышей' : 'Малыш'}: ${sexIcons}`, 'success');
             }
             
-            // Сбрасываем беременность после родов
-            s.isPregnant = false;
-            s.conceptionDate = null;
-            s.pregnancyWeeks = 0;
-            s.rpDate = null;
-            s.fetusCount = 1;
-            s.fetusSex = [];
-            s.complications = [];
-            s.healthStatus = 'normal';
-            s.lastComplicationCheck = null;
+            // Сброс беременности после родов
+            Object.assign(p, structuredClone(defaultPregnancyData));
             updated = true;
             
             saveSettingsDebounced();
@@ -367,7 +382,7 @@ function parseAIStatus(text) {
         }
     }
 
-    // FIX #5: Улучшенный regex для парсинга срока беременности
+    // Парсим срок беременности
     const pregnancyPatterns = [
         /[Бб]еременност[ьи][^\n]{0,30}[\(:\s]+(\d+)\s*недел/i,
         /[Сс][Рр][Оо][Кк][:\s]+(\d+)\s*недел/i,
@@ -376,8 +391,7 @@ function parseAIStatus(text) {
         /[Pp]regnant[^\n]{0,50}(\d+)\s*week/i,
         /[Pp]regnancy[^\n]{0,30}[\(:\s]+(\d+)\s*week/i,
         /(\d+)\s*weeks?\s*(?:of\s+)?pregnan/i,
-        /🤰[^\n]{0,30}(\d+)\s*(?:недел|week)/i,
-        /[Тт]риместр[^\n]{0,20}(\d+)\s*недел/i
+        /🤰[^\n]{0,30}(\d+)\s*(?:недел|week)/i
     ];
     
     let weeks = null;
@@ -390,135 +404,79 @@ function parseAIStatus(text) {
         }
     }
     
-    // FIX #5: Парсинг количества плодов
+    // Парсим количество плодов
     let detectedFetusCount = null;
-    const fetusPatterns = [
-        /[Дд]войн[яеи]|[Tt]wins?/i,
-        /[Тт]ройн[яеи]|[Tt]riplets?/i,
-        /(\d+)\s*(?:плод|эмбрион|малыш|ребён)/i,
-        /(\d+)\s*(?:fetus|embr|bab)/i
-    ];
-    
-    for (const pattern of fetusPatterns) {
-        const match = text.match(pattern);
-        if (match) {
-            if (pattern.source.includes('войн') || pattern.source.includes('wins')) {
-                detectedFetusCount = 2;
-            } else if (pattern.source.includes('ройн') || pattern.source.includes('riplet')) {
-                detectedFetusCount = 3;
-            } else if (match[1]) {
-                detectedFetusCount = parseInt(match[1]);
-            }
-            if (detectedFetusCount) break;
-        }
+    if (/[Дд]войн[яеи]|[Tt]wins?/i.test(text)) {
+        detectedFetusCount = 2;
+    } else if (/[Тт]ройн[яеи]|[Tt]riplets?/i.test(text)) {
+        detectedFetusCount = 3;
     }
     
     if (weeks !== null && weeks > 0) {
         console.log(`[Reproductive] Parsed pregnancy: ${weeks} weeks`);
 
-        if (!s.isPregnant) {
-            console.log('[Reproductive] AI says pregnant, but extension data is not. Setting pregnant...');
-            s.isPregnant = true;
-            s.pregnancyWeeks = weeks;
+        if (!p.isPregnant) {
+            console.log('[Reproductive] AI says pregnant, setting pregnant state...');
+            p.isPregnant = true;
+            p.pregnancyWeeks = weeks;
             
-            // Вычисляем дату зачатия на основе РП-даты
-            if (s.rpDate) {
-                const conceptionDate = calculateConceptionDate(new Date(s.rpDate), weeks);
+            if (p.rpDate) {
+                const conceptionDate = calculateConceptionDate(new Date(p.rpDate), weeks);
                 if (conceptionDate) {
-                    s.conceptionDate = conceptionDate.toISOString();
-                    console.log(`[Reproductive] Calculated conception date: ${s.conceptionDate}`);
+                    p.conceptionDate = conceptionDate.toISOString();
                 }
             } else {
-                s.conceptionDate = new Date().toISOString();
+                p.conceptionDate = new Date().toISOString();
             }
 
-            // FIX #2: Улучшенное определение количества плодов
-            if (detectedFetusCount) {
-                s.fetusCount = detectedFetusCount;
-            } else {
-                s.fetusCount = 1;
-            }
-
-            if (s.fetusSex.length === 0 || s.fetusSex.length !== s.fetusCount) {
-                s.fetusSex = [];
-                for (let i = 0; i < s.fetusCount; i++) {
-                    s.fetusSex.push(roll(2) === 1 ? 'M' : 'F');
-                }
+            p.fetusCount = detectedFetusCount || 1;
+            p.fetusSex = [];
+            for (let i = 0; i < p.fetusCount; i++) {
+                p.fetusSex.push(roll(2) === 1 ? 'M' : 'F');
             }
 
             updated = true;
 
-            // FIX #2: Уведомление всегда показывает количество плодов и пол
             if (s.showNotifications) {
-                const sexIcons = s.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
-                const fetusText = s.fetusCount === 1 ? '1 плод' : 
-                                  s.fetusCount === 2 ? 'Двойня' : 'Тройня';
+                const sexIcons = p.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
+                const fetusText = p.fetusCount === 1 ? '1 плод' : p.fetusCount === 2 ? 'Двойня' : 'Тройня';
                 showNotification(`🔄 Синхронизировано: ${weeks} нед. | ${fetusText} | Пол: ${sexIcons}`, 'info');
             }
-        } else if (s.isPregnant) {
-            const currentWeeks = s.pregnancyWeeks || 0;
-            
-            // Обновляем количество плодов если обнаружено
-            if (detectedFetusCount && detectedFetusCount !== s.fetusCount) {
-                s.fetusCount = detectedFetusCount;
-                // Обновляем пол для новых плодов
-                while (s.fetusSex.length < s.fetusCount) {
-                    s.fetusSex.push(roll(2) === 1 ? 'M' : 'F');
+        } else {
+            // Уже беременна - обновляем срок если отличается
+            if (detectedFetusCount && detectedFetusCount !== p.fetusCount) {
+                p.fetusCount = detectedFetusCount;
+                while (p.fetusSex.length < p.fetusCount) {
+                    p.fetusSex.push(roll(2) === 1 ? 'M' : 'F');
                 }
-                s.fetusSex = s.fetusSex.slice(0, s.fetusCount);
+                p.fetusSex = p.fetusSex.slice(0, p.fetusCount);
                 updated = true;
-                
-                if (s.showNotifications) {
-                    const sexIcons = s.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
-                    const fetusText = s.fetusCount === 1 ? '1 плод' : 
-                                      s.fetusCount === 2 ? 'Двойня' : 'Тройня';
-                    showNotification(`👶 Плодов обновлено: ${fetusText} | Пол: ${sexIcons}`, 'info');
-                }
             }
             
-            if (weeks !== currentWeeks) {
-                console.log(`[Reproductive] Pregnancy week mismatch: ours=${currentWeeks}, AI=${weeks}. Resyncing...`);
-                s.pregnancyWeeks = weeks;
+            if (weeks !== p.pregnancyWeeks) {
+                console.log(`[Reproductive] Pregnancy week mismatch: ours=${p.pregnancyWeeks}, AI=${weeks}. Resyncing...`);
+                p.pregnancyWeeks = weeks;
                 
-                if (s.rpDate) {
-                    const conceptionDate = calculateConceptionDate(new Date(s.rpDate), weeks);
+                if (p.rpDate) {
+                    const conceptionDate = calculateConceptionDate(new Date(p.rpDate), weeks);
                     if (conceptionDate) {
-                        s.conceptionDate = conceptionDate.toISOString();
-                        console.log(`[Reproductive] Recalculated conception date: ${s.conceptionDate}`);
+                        p.conceptionDate = conceptionDate.toISOString();
                     }
                 }
                 
                 updated = true;
-
                 if (s.showNotifications) {
                     showNotification(`🔄 Срок обновлён: ${weeks} недель`, 'info');
-                }
-            } else if (rpDate && s.rpDate) {
-                const newConceptionDate = calculateConceptionDate(new Date(s.rpDate), weeks);
-                if (newConceptionDate) {
-                    const newConceptionStr = newConceptionDate.toISOString();
-                    if (s.conceptionDate !== newConceptionStr) {
-                        s.conceptionDate = newConceptionStr;
-                        console.log(`[Reproductive] Updated conception date based on new RP date: ${s.conceptionDate}`);
-                        updated = true;
-                    }
                 }
             }
         }
     }
 
-    const notPregnantMatch = text.match(/[Нн]е\s+беременна|[Nn]ot\s+pregnant/i);
-    if (notPregnantMatch && s.isPregnant) {
-        console.log('[Reproductive] AI says not pregnant, but extension thinks she is. Clearing...');
-        s.isPregnant = false;
-        s.conceptionDate = null;
-        s.pregnancyWeeks = 0;
-        s.fetusCount = 1;
-        s.fetusSex = [];
-        s.complications = [];
-        s.healthStatus = 'normal';
+    // Проверка "не беременна"
+    if (/[Нн]е\s+беременна|[Nn]ot\s+pregnant/i.test(text) && p.isPregnant) {
+        console.log('[Reproductive] AI says not pregnant. Clearing...');
+        Object.assign(p, structuredClone(defaultPregnancyData));
         updated = true;
-
         if (s.showNotifications) {
             showNotification('🔄 Статус синхронизирован: не беременна', 'info');
         }
@@ -542,7 +500,6 @@ function updateCycleDay() {
     if (!s.lastCycleUpdate) {
         s.lastCycleUpdate = now;
         saveSettingsDebounced();
-        console.log('[Reproductive] Cycle timer initialized');
         return;
     }
 
@@ -551,17 +508,13 @@ function updateCycleDay() {
 
     if (daysPassed > 0) {
         const oldDay = s.cycleDay;
-
         s.cycleDay += daysPassed;
-
         while (s.cycleDay > 28) {
             s.cycleDay -= 28;
         }
-
         s.lastCycleUpdate = now;
 
         console.log(`[Reproductive] Auto-update: ${oldDay} → ${s.cycleDay} (${daysPassed} days passed)`);
-
         saveSettingsDebounced();
         syncUI();
         updatePromptInjection();
@@ -644,21 +597,12 @@ function initCustomNotifications() {
 }
 
 @keyframes slideIn {
-    from {
-        transform: translateY(-100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateY(0);
-        opacity: 1;
-    }
+    from { transform: translateY(-100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
 }
 
 @keyframes slideOut {
-    to {
-        transform: translateY(-100%);
-        opacity: 0;
-    }
+    to { transform: translateY(-100%); opacity: 0; }
 }
 </style>`);
 }
@@ -692,9 +636,10 @@ function showNotification(message, type = 'info') {
 
 function checkConception() {
     const s = getSettings();
+    const p = getPregnancyData();
 
     if (!s.isEnabled) return null;
-    if (s.isPregnant) {
+    if (p.isPregnant) {
         console.log('[Reproductive] Already pregnant, skipping check');
         return null;
     }
@@ -722,7 +667,7 @@ function checkConception() {
     const conceptionRoll = roll(100);
     const success = conceptionRoll <= chance;
 
-    console.log(`[Reproductive] Check: roll=${conceptionRoll}, need<=${chance}, contraception=${s.contraception}, failed=${contraceptionFailed}, result=${success ? 'PREGNANT' : 'no'}`);
+    console.log(`[Reproductive] Check: roll=${conceptionRoll}, need<=${chance}, result=${success ? 'PREGNANT' : 'no'}`);
 
     const result = {
         roll: conceptionRoll,
@@ -734,33 +679,29 @@ function checkConception() {
     };
 
     if (success) {
-        s.isPregnant = true;
-        s.conceptionDate = new Date().toISOString();
-        s.pregnancyWeeks = 0;
+        p.isPregnant = true;
+        p.conceptionDate = new Date().toISOString();
+        p.pregnancyWeeks = 0;
         s.totalConceptions++;
 
         const multiplesRoll = roll(1000) / 10;
         if (multiplesRoll <= CHANCES.triplets) {
-            s.fetusCount = 3;
+            p.fetusCount = 3;
         } else if (multiplesRoll <= CHANCES.twins) {
-            s.fetusCount = 2;
+            p.fetusCount = 2;
         } else {
-            s.fetusCount = 1;
+            p.fetusCount = 1;
         }
 
-        s.fetusSex = [];
-        for (let i = 0; i < s.fetusCount; i++) {
-            const sexRoll = roll(2);
-            s.fetusSex.push(sexRoll === 1 ? 'M' : 'F');
+        p.fetusSex = [];
+        for (let i = 0; i < p.fetusCount; i++) {
+            p.fetusSex.push(roll(2) === 1 ? 'M' : 'F');
         }
 
-        // FIX #2: Уведомление ВСЕГДА показывает количество плодов и пол
         if (s.showNotifications) {
-            const sexIcons = s.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
-            const fetusText = s.fetusCount === 1 ? '1 плод' : 
-                              s.fetusCount === 2 ? 'Двойня!' : 'Тройня!';
-            let msg = `✅ Беременность! День ${s.cycleDay}, ${conceptionRoll}/${chance}\n${fetusText} | Пол: ${sexIcons}`;
-            showNotification(msg, 'success');
+            const sexIcons = p.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
+            const fetusText = p.fetusCount === 1 ? '1 плод' : p.fetusCount === 2 ? 'Двойня!' : 'Тройня!';
+            showNotification(`✅ Беременность! День ${s.cycleDay}, ${conceptionRoll}/${chance}\n${fetusText} | Пол: ${sexIcons}`, 'success');
         }
     } else {
         if (s.showNotifications) {
@@ -774,52 +715,41 @@ function checkConception() {
     return result;
 }
 
-// FIX #3: Улучшенная проверка осложнений с уведомлением
 function checkComplications() {
     const s = getSettings();
-    if (!s.isPregnant) return;
-
-    let weeks = s.pregnancyWeeks || 0;
+    const p = getPregnancyData();
     
-    if (weeks === 0 && s.conceptionDate) {
-        const now = Date.now();
-        const conceptionTime = new Date(s.conceptionDate).getTime();
-        const diffMs = now - conceptionTime;
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        weeks = Math.floor(diffDays / 7);
+    if (!p.isPregnant) return;
+
+    let weeks = p.pregnancyWeeks || 0;
+    if (weeks === 0 && p.conceptionDate) {
+        const diffMs = Date.now() - new Date(p.conceptionDate).getTime();
+        weeks = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7));
     }
 
     const now = Date.now();
-    if (s.lastComplicationCheck) {
-        const lastCheckDiff = now - s.lastComplicationCheck;
-        const daysSinceCheck = Math.floor(lastCheckDiff / (1000 * 60 * 60 * 24));
+    if (p.lastComplicationCheck) {
+        const daysSinceCheck = Math.floor((now - p.lastComplicationCheck) / 86400000);
         if (daysSinceCheck < 7) return;
     }
 
-    s.lastComplicationCheck = now;
+    p.lastComplicationCheck = now;
 
-    // FIX #3: Уведомление о проведении проверки
     if (s.showNotifications) {
         showNotification(`🩺 Проверка здоровья (${weeks} нед.)...`, 'info');
     }
 
-    let baseChance = 0;
-    if (weeks <= 12) baseChance = 15;
-    else if (weeks <= 27) baseChance = 5;
-    else baseChance = 12;
-
-    if (s.fetusCount >= 2) baseChance += 10;
-    if (s.fetusCount >= 3) baseChance += 15;
+    let baseChance = weeks <= 12 ? 15 : weeks <= 27 ? 5 : 12;
+    if (p.fetusCount >= 2) baseChance += 10;
+    if (p.fetusCount >= 3) baseChance += 15;
 
     const complicationRoll = roll(100);
-
-    console.log(`[Reproductive] Complication check: roll=${complicationRoll}, threshold=${baseChance}`);
 
     if (complicationRoll <= baseChance) {
         const types = getComplicationTypes(weeks);
         const complication = types[Math.floor(Math.random() * types.length)];
 
-        s.complications.push({
+        p.complications.push({
             week: weeks,
             type: complication.type,
             severity: complication.severity,
@@ -828,9 +758,9 @@ function checkComplications() {
         });
 
         if (complication.severity === 'critical') {
-            s.healthStatus = 'critical';
-        } else if (complication.severity === 'warning' && s.healthStatus === 'normal') {
-            s.healthStatus = 'warning';
+            p.healthStatus = 'critical';
+        } else if (complication.severity === 'warning' && p.healthStatus === 'normal') {
+            p.healthStatus = 'warning';
         }
 
         saveSettingsDebounced();
@@ -841,10 +771,7 @@ function checkComplications() {
             showNotification(`${emoji} ОСЛОЖНЕНИЕ: ${complication.type}\n${complication.description}`, 
                            complication.severity === 'critical' ? 'warning' : 'info');
         }
-
-        console.log(`[Reproductive] Complication at week ${weeks}:`, complication);
     } else {
-        // FIX #3: Уведомление что всё в порядке
         if (s.showNotifications) {
             showNotification(`✅ Проверка пройдена: всё в норме!`, 'success');
         }
@@ -875,55 +802,11 @@ function getComplicationTypes(weeks) {
 }
 
 function resetPregnancy() {
-    const s = getSettings();
-    s.isPregnant = false;
-    s.conceptionDate = null;
-    s.pregnancyWeeks = 0;
-    s.rpDate = null;
-    s.fetusCount = 1;
-    s.fetusSex = [];
-    s.complications = [];
-    s.healthStatus = 'normal';
-    s.lastComplicationCheck = null;
+    const p = getPregnancyData();
+    Object.assign(p, structuredClone(defaultPregnancyData));
     saveSettingsDebounced();
     syncUI();
     updatePromptInjection();
-}
-
-// FIX #6: Функция сброса данных для нового чата
-function resetChatSpecificData() {
-    const s = getSettings();
-    
-    // Сбрасываем данные беременности
-    s.isPregnant = false;
-    s.conceptionDate = null;
-    s.pregnancyWeeks = 0;
-    s.rpDate = null;
-    s.fetusCount = 1;
-    s.fetusSex = [];
-    s.complications = [];
-    s.healthStatus = 'normal';
-    s.lastComplicationCheck = null;
-    
-    // НЕ сбрасываем: cycleDay, lastCycleUpdate, totalChecks, totalConceptions, настройки UI
-    
-    console.log('[Reproductive] Chat-specific data reset');
-    
-    saveSettingsDebounced();
-    syncUI();
-    updatePromptInjection();
-}
-
-// FIX #6: Получение ID текущего чата
-function getCurrentChatId() {
-    try {
-        const context = typeof SillyTavern?.getContext === 'function' 
-            ? SillyTavern.getContext() 
-            : window;
-        return context?.chatId || context?.chat_metadata?.chat_id || null;
-    } catch (e) {
-        return null;
-    }
 }
 
 function onMessageReceived() {
@@ -960,7 +843,6 @@ function onMessageReceived() {
                 s.lastCycleUpdate = Date.now();
                 saveSettingsDebounced();
                 syncUI();
-                console.log('[Reproductive] Cycle day from AI:', aiCycleDay);
             }
         }
 
@@ -973,9 +855,6 @@ function onMessageReceived() {
 
 function getBasePrompt() {
     const s = getSettings();
-
-    console.log('[Reproductive] getBasePrompt() called');
-    console.log('[Reproductive] Current cycleDay:', s.cycleDay);
 
     if (!s.isEnabled) return '';
 
@@ -994,145 +873,111 @@ function getBasePrompt() {
     let prompt = `[OOC: 🩺 РЕПРОДУКТИВНАЯ СИСТЕМА — ACTIVE\n`;
     prompt += `⚠️ В статус-блок {{user}} добавь:\n`;
     prompt += `🩸 Цикл: День ${day} | ${phase} | ${contraEmoji}\n\n`;
-
-    prompt += `📅 ЦИКЛ: 1-5 менструация, 6-11 фолликулярная, 12-16 овуляция (высокое либидо!), 17-28 лютеиновая. День 28 → день 1.\n`;
+    prompt += `📅 ЦИКЛ: 1-5 менструация, 6-11 фолликулярная, 12-16 овуляция (высокое либидо!), 17-28 лютеиновая.\n`;
 
     if (s.contraception === 'condom') {
         prompt += `🛡️ ПРЕЗЕРВАТИВ: {{char}} достаёт/надевает при сексе. Может порваться (~15%).\n`;
     }
 
-    prompt += `\n🎲 ЗАЧАТИЕ: Если вагинальный секс + эякуляция внутрь`;
-    if (s.contraception !== 'none') {
-        prompt += ` + контрацепция ПОДВЕЛА`;
-    }
-    prompt += `, добавь В КОНЦЕ как скрытый HTML-комментарий:\n`;
-    prompt += `<!-- [CYCLE_DAY:${day}][CONCEPTION_CHECK] -->\n`;
+    prompt += `\n🎲 ЗАЧАТИЕ: При вагинальном сексе + эякуляции внутрь`;
+    if (s.contraception !== 'none') prompt += ` + контрацепция ПОДВЕЛА`;
+    prompt += `, добавь В КОНЦЕ:\n<!-- [CYCLE_DAY:${day}][CONCEPTION_CHECK] -->\n`;
     prompt += `❌ НЕ добавляй при: оральном/анальном, прерванном акте, эякуляции снаружи`;
-    if (s.contraception !== 'none') {
-        prompt += `, успешной контрацепции`;
-    }
+    if (s.contraception !== 'none') prompt += `, успешной контрацепции`;
     prompt += `.]`;
-
-    console.log('[Reproductive] Generated prompt with day:', day);
 
     return prompt;
 }
 
-// FIX #1: Улучшенная инжекция беременности
 function getPregnancyPrompt() {
     const s = getSettings();
-    if (!s.isPregnant) return '';
-
-    let weeks = s.pregnancyWeeks || 0;
+    const p = getPregnancyData();
     
-    if (weeks === 0 && s.conceptionDate) {
-        const conceptionDate = new Date(s.conceptionDate);
-        const today = new Date();
-        const diffTime = Math.abs(today - conceptionDate);
+    if (!p.isPregnant) return '';
+
+    let weeks = p.pregnancyWeeks || 0;
+    if (weeks === 0 && p.conceptionDate) {
+        const diffTime = Math.abs(new Date() - new Date(p.conceptionDate));
         weeks = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 7));
     }
 
-    const fetusText = s.fetusCount === 1 ? 'одним плодом' : s.fetusCount === 2 ? 'двойней!' : 'тройней!';
-
     let symptoms = '';
     let recommendations = '';
+    
     if (weeks <= 4) {
         const early = ['задержка менструации', 'лёгкая тошнота по утрам', 'повышенная усталость', 'перепады настроения', 'обострение обоняния', 'покалывание в груди', 'сонливость днём', 'лёгкие спазмы внизу живота'];
         symptoms = getSeededRandomSymptoms(early, 3, weeks);
         recommendations = 'Фолиевая кислота 400 мкг/день, тест на ХГЧ, избегать алкоголя/курения';
     } else if (weeks <= 8) {
-        const firstTrim = ['токсикоз (рвота 2-5 раз в день)', 'чувствительность и набухание груди', 'частое мочеиспускание', 'металлический привкус во рту', 'отвращение к запахам', 'повышенное слюноотделение', 'головокружение', 'запоры', 'эмоциональная нестабильность'];
+        const firstTrim = ['токсикоз (рвота 2-5 раз в день)', 'чувствительность груди', 'частое мочеиспускание', 'металлический привкус во рту', 'отвращение к запахам', 'головокружение', 'запоры', 'эмоциональная нестабильность'];
         symptoms = getSeededRandomSymptoms(firstTrim, 4, weeks);
-        recommendations = 'Встать на учёт до 12 недель, первый скрининг УЗИ, дробное питание, имбирный чай от тошноты';
+        recommendations = 'Встать на учёт до 12 недель, первый скрининг УЗИ, дробное питание';
     } else if (weeks <= 12) {
-        const earlySecond = ['живот начинает округляться', 'токсикоз ослабевает', 'эмоциональные перепады', 'пигментация кожи', 'венозная сетка на груди', 'повышенный аппетит', 'одышка при подъёме по лестнице', 'кровоточивость дёсен'];
+        const earlySecond = ['живот начинает округляться', 'токсикоз ослабевает', 'эмоциональные перепады', 'пигментация кожи', 'венозная сетка на груди', 'повышенный аппетит', 'одышка при подъёме'];
         symptoms = getSeededRandomSymptoms(earlySecond, 4, weeks);
-        recommendations = 'Контроль веса (+0.3-0.5 кг/неделю), кальцийсодержащие продукты, избегать горячих ванн';
+        recommendations = 'Контроль веса (+0.3-0.5 кг/неделю), кальций, избегать горячих ванн';
     } else if (weeks <= 16) {
-        const midSecond = ['первые шевеления плода (бабочки в животе)', 'либидо возрастает', 'энергия возвращается', 'грудь увеличивается на 1-2 размера', 'кожа становится чище', 'волосы гуще и блестят', 'судороги в икрах по ночам', 'заложенность носа'];
+        const midSecond = ['первые шевеления плода', 'либидо возрастает', 'энергия возвращается', 'грудь увеличивается', 'волосы гуще', 'судороги в икрах', 'заложенность носа'];
         symptoms = getSeededRandomSymptoms(midSecond, 4, weeks);
-        recommendations = 'Второй скрининг (18-21 неделя) определит пол, массаж от растяжек, витамин D3';
+        recommendations = 'Второй скрининг определит пол, массаж от растяжек, витамин D3';
     } else if (weeks <= 20) {
-        const lateSecond = ['живот заметно увеличен', 'учащённое сердцебиение', 'округление лица', 'растяжки на коже живота/бёдер', 'молозиво из сосков', 'судороги в ногах', 'изжога после жирной еды', 'потемнение ареол', 'пигментные пятна на лице'];
+        const lateSecond = ['живот заметно увеличен', 'учащённое сердцебиение', 'растяжки', 'молозиво из сосков', 'судороги в ногах', 'изжога', 'потемнение ареол'];
         symptoms = getSeededRandomSymptoms(lateSecond, 5, weeks);
-        recommendations = 'Бандаж для поддержки живота, железосодержащие продукты, крем от растяжек';
+        recommendations = 'Бандаж для живота, железосодержащие продукты, крем от растяжек';
     } else if (weeks <= 27) {
-        const thirdStart = ['тяжесть в животе', 'отёки ног к вечеру', 'боли в пояснице', 'одышка при ходьбе', 'изжога усиливается', 'бессонница (трудно найти позу)', 'зуд кожи живота (растяжение)', 'активные толчки плода (видны через живот)', 'варикозное расширение вен', 'геморрой'];
+        const thirdStart = ['тяжесть в животе', 'отёки ног к вечеру', 'боли в пояснице', 'одышка при ходьбе', 'изжога', 'бессонница', 'активные толчки плода', 'варикоз'];
         symptoms = getSeededRandomSymptoms(thirdStart, 5, weeks);
-        recommendations = 'Сон на левом боку, компрессионные чулки, дробное питание, КТГ';
+        recommendations = 'Сон на левом боку, компрессионные чулки, КТГ';
     } else if (weeks <= 36) {
-        const lateThird = ['сильная усталость', 'частые походы в туалет (каждые 30-60 мин)', 'тренировочные схватки Брэкстона-Хикса', 'тяжело дышать (матка давит на диафрагму)', 'отёки рук/лица по утрам', 'бессонница', 'боли в тазу (расхождение костей)', 'выделения усиливаются', 'пупок выворачивается наружу', 'походка утиная'];
+        const lateThird = ['сильная усталость', 'частые походы в туалет', 'тренировочные схватки', 'тяжело дышать', 'отёки', 'бессонница', 'боли в тазу', 'утиная походка'];
         symptoms = getSeededRandomSymptoms(lateThird, 6, weeks);
         recommendations = 'Сбор сумки в роддом, упражнения Кегеля, КТГ еженедельно';
     } else if (weeks <= 40) {
-        const preBirth = ['живот опустился (головка в таз)', 'отхождение слизистой пробки', 'схватки каждые 10-15 минут', 'подтекание околоплодных вод', 'диарея (организм чистится)', 'тянущие боли внизу живота', 'резкий прилив энергии (синдром гнездования)', 'потеря веса 1-2 кг', 'тошнота/рвота', 'давление на прямую кишку'];
+        const preBirth = ['живот опустился', 'отхождение пробки', 'схватки каждые 10-15 минут', 'подтекание вод', 'диарея', 'тянущие боли', 'синдром гнездования'];
         symptoms = getSeededRandomSymptoms(preBirth, 5, weeks);
-        recommendations = 'НЕ УХОДИТЬ ДАЛЕКО! Телефон роддома под рукой, считать схватки';
+        recommendations = 'НЕ УХОДИТЬ ДАЛЕКО! Телефон роддома под рукой';
     } else {
         symptoms = '⚠️ ПЕРЕНАШИВАНИЕ (>40 недель)! Риск гипоксии плода';
-        recommendations = '⚠️ СРОЧНО К ВРАЧУ! КТГ ежедневно, возможна стимуляция';
+        recommendations = '⚠️ СРОЧНО К ВРАЧУ! Возможна стимуляция';
     }
 
-    // Форматируем дату зачатия для prompt
-    let conceptionDateStr = '—';
-    if (s.conceptionDate) {
-        conceptionDateStr = new Date(s.conceptionDate).toLocaleDateString('ru-RU', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-        });
-    }
-
-    // FIX #4: Правильный расчёт ПДР
+    let conceptionDateStr = p.conceptionDate ? new Date(p.conceptionDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
+    
     let dueDateStr = '—';
-    if (s.conceptionDate) {
-        const dueDate = calculateDueDate(s.conceptionDate, s.rpDate);
+    if (p.conceptionDate) {
+        const dueDate = calculateDueDate(p.conceptionDate);
         if (dueDate) {
-            dueDateStr = dueDate.toLocaleDateString('ru-RU', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric'
-            });
+            dueDateStr = dueDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
         }
     }
 
-    // FIX #2: Форматируем пол плода/плодов с количеством
     let sexText = '';
-    if (s.fetusSex && s.fetusSex.length > 0) {
-        const sexNames = s.fetusSex.map(sex => sex === 'M' ? 'мальчик ♂️' : 'девочка ♀️');
-        if (s.fetusCount === 1) {
-            sexText = sexNames[0];
-        } else {
-            sexText = sexNames.join(', ');
-        }
+    if (p.fetusSex && p.fetusSex.length > 0) {
+        sexText = p.fetusSex.map(sex => sex === 'M' ? 'мальчик ♂️' : 'девочка ♀️').join(', ');
     }
 
-    // FIX #1: Более структурированный и читаемый промпт
+    const fetusText = p.fetusCount === 1 ? 'одним плодом' : p.fetusCount === 2 ? 'двойней' : 'тройней';
+
     let prompt = `
 
 [OOC: 🤰 БЕРЕМЕННОСТЬ — АКТИВНА]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 📅 Срок: ${weeks} недель из 40
-👶 Плодов: ${s.fetusCount} (${fetusText})
+👶 Беременна ${fetusText}
 ${sexText ? `⚤ Пол: ${sexText}` : ''}
-📆 Дата зачатия: ${conceptionDateStr}
+📆 Зачатие: ${conceptionDateStr}
 🗓️ ПДР: ${dueDateStr}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-💊 ТЕКУЩИЕ СИМПТОМЫ (${weeks} нед.):
-${symptoms}
+💊 СИМПТОМЫ (${weeks} нед.): ${symptoms}
 
-✓ РЕКОМЕНДАЦИИ:
-${recommendations}
+✓ РЕКОМЕНДАЦИИ: ${recommendations}
 
-⚠️ ВАЖНО ДЛЯ РП:
-- Персонаж ОБЯЗАН демонстрировать указанные симптомы
-- Пол ребёнка: ${sexText || 'пока не определён'}
-- Используй информацию о беременности в диалогах и действиях`;
+⚠️ Персонаж ОБЯЗАН демонстрировать симптомы!
+⚠️ Пол: ${sexText || 'не определён'}`;
 
     return prompt;
 }
-
 
 function updatePromptInjection() {
     try {
@@ -1147,16 +992,8 @@ function updatePromptInjection() {
 
         const fullPrompt = getBasePrompt() + getPregnancyPrompt();
 
-        console.log('[Reproductive] Injecting prompt, length:', fullPrompt.length);
-        console.log('[Reproductive] Day in prompt:', s.cycleDay);
-
         setTimeout(() => {
-            setExtensionPrompt(
-                extensionName,
-                fullPrompt,
-                extension_prompt_types.IN_CHAT,
-                0
-            );
+            setExtensionPrompt(extensionName, fullPrompt, extension_prompt_types.IN_CHAT, 0);
             console.log('[Reproductive] Prompt injected');
         }, 50);
 
@@ -1165,9 +1002,9 @@ function updatePromptInjection() {
     }
 }
 
-// FIX #1: Улучшенная инжекция результата зачатия
 function injectConceptionResult(result) {
     const s = getSettings();
+    const p = getPregnancyData();
 
     const getPhase = (day) => {
         if (day <= 5) return '🔴 Менструация';
@@ -1176,41 +1013,25 @@ function injectConceptionResult(result) {
         return 'Лютеиновая';
     };
 
-    // FIX #2: Добавлено количество плодов и пол в результат
     let codeBlock = '```\n';
-    codeBlock += `🤰 ПРОВЕРКА ЗАЧАТИЯ\n`;
-    codeBlock += `━━━━━━━━━━━━━━━━━━━━\n`;
-    codeBlock += `📅 День цикла: ${result.cycleDay} (${getPhase(result.cycleDay)})\n`;
+    codeBlock += `🤰 ПРОВЕРКА ЗАЧАТИЯ\n━━━━━━━━━━━━━━━━━━━━\n`;
+    codeBlock += `📅 День: ${result.cycleDay} (${getPhase(result.cycleDay)})\n`;
     codeBlock += `🎲 Бросок: ${result.roll} | Порог: ${result.chance}\n`;
-
-    if (result.contraceptionFailed) {
-        codeBlock += `⚠️ Контрацепция ПОДВЕЛА!\n`;
-    }
-
+    if (result.contraceptionFailed) codeBlock += `⚠️ Контрацепция ПОДВЕЛА!\n`;
     codeBlock += `━━━━━━━━━━━━━━━━━━━━\n`;
 
     if (result.success) {
-        const sexes = s.fetusSex.map(sex => sex === 'M' ? '♂️ мальчик' : '♀️ девочка').join(', ');
-        const fetusText = s.fetusCount === 1 ? '1 плод' : 
-                          s.fetusCount === 2 ? 'Двойня!' : 'Тройня!';
-        codeBlock += `✅ БЕРЕМЕННОСТЬ!\n`;
-        codeBlock += `👶 Плодов: ${fetusText}\n`;
-        codeBlock += `⚤ Пол: ${sexes}\n`;
+        const sexes = p.fetusSex.map(sex => sex === 'M' ? '♂️ мальчик' : '♀️ девочка').join(', ');
+        const fetusText = p.fetusCount === 1 ? '1 плод' : p.fetusCount === 2 ? 'Двойня!' : 'Тройня!';
+        codeBlock += `✅ БЕРЕМЕННОСТЬ!\n👶 ${fetusText}\n⚤ Пол: ${sexes}\n`;
     } else {
         codeBlock += `❌ ЗАЧАТИЯ НЕ ПРОИЗОШЛО\n`;
     }
-
     codeBlock += '```';
 
-    const oocPrompt = `[OOC: ОБЯЗАТЕЛЬНО выведи этот блок В НАЧАЛЕ своего ответа, БЕЗ изменений:\n${codeBlock}]`;
+    const oocPrompt = `[OOC: Выведи этот блок В НАЧАЛЕ ответа:\n${codeBlock}]`;
 
-    setExtensionPrompt(
-        extensionName + '-result',
-        oocPrompt,
-        extension_prompt_types.IN_CHAT,
-        0
-    );
-
+    setExtensionPrompt(extensionName + '-result', oocPrompt, extension_prompt_types.IN_CHAT, 0);
     updatePromptInjection();
 
     setTimeout(() => {
@@ -1220,6 +1041,7 @@ function injectConceptionResult(result) {
 
 function syncUI() {
     const s = getSettings();
+    const p = getPregnancyData();
 
     const enabled = document.getElementById('repro-enabled');
     const notify = document.getElementById('repro-notify');
@@ -1237,27 +1059,16 @@ function syncUI() {
     if (currentCycle) {
         const day = s.cycleDay;
         let phase, emoji;
-
-        if (day <= 5) {
-            phase = 'Менструация';
-            emoji = '🔴';
-        } else if (day <= 11) {
-            phase = 'Фолликулярная';
-            emoji = '🌱';
-        } else if (day <= 16) {
-            phase = 'Овуляция';
-            emoji = '🔥';
-        } else {
-            phase = 'Лютеиновая';
-            emoji = '🌙';
-        }
-
+        if (day <= 5) { phase = 'Менструация'; emoji = '🔴'; }
+        else if (day <= 11) { phase = 'Фолликулярная'; emoji = '🌱'; }
+        else if (day <= 16) { phase = 'Овуляция'; emoji = '🔥'; }
+        else { phase = 'Лютеиновая'; emoji = '🌙'; }
         currentCycle.innerHTML = `${emoji} <strong>${day}</strong>/28 — ${phase}`;
     }
 
     const status = document.getElementById('repro-status');
     if (status) {
-        if (s.isPregnant) {
+        if (p.isPregnant) {
             status.innerHTML = `<span style="color: #ff9ff3;">🤰 ${L('pregnant')}</span>`;
         } else {
             status.innerHTML = `<span style="opacity: 0.7;">${L('notPregnant')}</span>`;
@@ -1268,191 +1079,110 @@ function syncUI() {
     const monitorContent = document.getElementById('repro-pregnancy-content');
 
     if (monitorBlock && monitorContent) {
-    if (s.isPregnant && (s.pregnancyWeeks > 0 || s.conceptionDate)) {
-        monitorBlock.style.display = 'block';
+        if (p.isPregnant && (p.pregnancyWeeks > 0 || p.conceptionDate)) {
+            monitorBlock.style.display = 'block';
 
-        let weeks = s.pregnancyWeeks || 0;
-        let days = 0;
-        
-        if (weeks === 0 && s.conceptionDate) {
-            const conceptionTime = new Date(s.conceptionDate).getTime();
-            const now = Date.now();
-            const diffMs = now - conceptionTime;
-            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-            weeks = Math.floor(diffDays / 7);
-            days = diffDays % 7;
-        }
-
-        // FIX #4: Правильный расчёт ПДР на основе даты зачатия
-        let dueDateStr = '—';
-        if (s.conceptionDate) {
-            const dueDate = calculateDueDate(s.conceptionDate, s.rpDate);
-            if (dueDate) {
-                dueDateStr = dueDate.toLocaleDateString('ru-RU', { 
-                    day: 'numeric', 
-                    month: 'long', 
-                    year: 'numeric' 
-                });
+            let weeks = p.pregnancyWeeks || 0;
+            let days = 0;
+            if (weeks === 0 && p.conceptionDate) {
+                const diffMs = Date.now() - new Date(p.conceptionDate).getTime();
+                const diffDays = Math.floor(diffMs / 86400000);
+                weeks = Math.floor(diffDays / 7);
+                days = diffDays % 7;
             }
-        }
 
-        const progressPercent = Math.min(100, Math.round((weeks / 40) * 100));
+            let dueDateStr = '—';
+            if (p.conceptionDate) {
+                const dueDate = calculateDueDate(p.conceptionDate);
+                if (dueDate) {
+                    dueDateStr = dueDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+                }
+            }
 
-        const sexIcons = s.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
+            const progressPercent = Math.min(100, Math.round((weeks / 40) * 100));
+            const sexIcons = p.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
+            let fetusText = p.fetusCount === 1 ? 'Один плод' : p.fetusCount === 2 ? 'Двойня' : 'Тройня';
 
-        // FIX #2: Показываем количество плодов
-        let fetusText = s.fetusCount === 1 ? 'Один плод' :
-                       s.fetusCount === 2 ? 'Двойня' : 'Тройня';
+            let symptoms = '';
+            let recommendations = '';
 
-let symptoms = '';
-let recommendations = '';
+            if (weeks <= 4) {
+                const early = ['задержка менструации', 'лёгкая тошнота', 'усталость', 'перепады настроения', 'обострение обоняния', 'покалывание в груди', 'сонливость'];
+                symptoms = getSeededRandomSymptoms(early, 3, weeks);
+                recommendations = '✓ Фолиевая кислота, тест на ХГЧ, избегать алкоголя.';
+            } else if (weeks <= 8) {
+                const firstTrim = ['токсикоз', 'чувствительность груди', 'частое мочеиспускание', 'металлический привкус', 'отвращение к запахам', 'головокружение', 'запоры'];
+                symptoms = getSeededRandomSymptoms(firstTrim, 4, weeks);
+                recommendations = '✓ Встать на учёт, первое УЗИ, дробное питание.';
+            } else if (weeks <= 12) {
+                const earlySecond = ['живот округляется', 'токсикоз ослабевает', 'эмоциональные перепады', 'пигментация', 'повышенный аппетит'];
+                symptoms = getSeededRandomSymptoms(earlySecond, 4, weeks);
+                recommendations = '✓ Контроль веса, кальций, избегать горячих ванн.';
+            } else if (weeks <= 16) {
+                const midSecond = ['первые шевеления', 'либидо возрастает', 'энергия', 'грудь увеличивается', 'волосы гуще', 'судороги'];
+                symptoms = getSeededRandomSymptoms(midSecond, 4, weeks);
+                recommendations = '✓ Второй скрининг, массаж от растяжек, витамин D3.';
+            } else if (weeks <= 20) {
+                const lateSecond = ['живот увеличен', 'сердцебиение', 'растяжки', 'молозиво', 'судороги', 'изжога'];
+                symptoms = getSeededRandomSymptoms(lateSecond, 5, weeks);
+                recommendations = '✓ Бандаж, железо, крем от растяжек.';
+            } else if (weeks <= 27) {
+                const thirdStart = ['тяжесть', 'отёки', 'боли в пояснице', 'одышка', 'изжога', 'бессонница', 'толчки плода'];
+                symptoms = getSeededRandomSymptoms(thirdStart, 5, weeks);
+                recommendations = '✓ Сон на левом боку, компрессионные чулки, КТГ.';
+            } else if (weeks <= 36) {
+                const lateThird = ['усталость', 'частый туалет', 'тренировочные схватки', 'тяжело дышать', 'отёки', 'боли в тазу'];
+                symptoms = getSeededRandomSymptoms(lateThird, 6, weeks);
+                recommendations = '✓ Сумка в роддом, упражнения Кегеля, КТГ еженедельно.';
+            } else if (weeks <= 40) {
+                const preBirth = ['живот опустился', 'пробка', 'схватки', 'подтекание вод', 'тянущие боли', 'гнездование'];
+                symptoms = getSeededRandomSymptoms(preBirth, 5, weeks);
+                recommendations = '✓ НЕ УХОДИТЬ ДАЛЕКО! Телефон роддома под рукой.';
+            } else {
+                symptoms = '⚠️ ПЕРЕНАШИВАНИЕ!';
+                recommendations = '⚠️ СРОЧНО К ВРАЧУ!';
+            }
 
-if (weeks <= 4) {
-    const early = ['задержка менструации', 'лёгкая тошнота по утрам', 'повышенная усталость', 'перепады настроения', 'обострение обоняния', 'покалывание в груди', 'сонливость днём', 'лёгкие спазмы внизу живота'];
-    symptoms = getSeededRandomSymptoms(early, 3, weeks);
-    recommendations = '✓ Фолиевая кислота 400 мкг/день, тест на ХГЧ, избегать алкоголя/курения.';
-} else if (weeks <= 8) {
-    const firstTrim = ['токсикоз (рвота 2-5 раз в день)', 'чувствительность и набухание груди', 'частое мочеиспускание', 'металлический привкус во рту', 'отвращение к запахам', 'повышенное слюноотделение', 'головокружение', 'запоры', 'эмоциональная нестабильность'];
-    symptoms = getSeededRandomSymptoms(firstTrim, 4, weeks);
-    recommendations = '✓ Встать на учёт до 12 недель, первый скрининг УЗИ, дробное питание, имбирный чай от тошноты.';
-} else if (weeks <= 12) {
-    const earlySecond = ['живот начинает округляться', 'токсикоз ослабевает', 'эмоциональные перепады', 'пигментация кожи', 'венозная сетка на груди', 'повышенный аппетит', 'одышка при подъёме по лестнице', 'кровоточивость дёсен'];
-    symptoms = getSeededRandomSymptoms(earlySecond, 4, weeks);
-    recommendations = '✓ Контроль веса (+0.3-0.5 кг/неделю), кальцийсодержащие продукты, избегать горячих ванн, секс разрешён.';
-} else if (weeks <= 16) {
-    const midSecond = ['первые шевеления плода (бабочки в животе)', 'либидо возрастает', 'энергия возвращается', 'грудь увеличивается на 1-2 размера', 'кожа становится чище', 'волосы гуще и блестят', 'судороги в икрах по ночам', 'заложенность носа'];
-    symptoms = getSeededRandomSymptoms(midSecond, 4, weeks);
-    recommendations = '✓ Второй скрининг (18-21 неделя) определит пол, массаж от растяжек, витамин D3, общение с малышом.';
-} else if (weeks <= 20) {
-    const lateSecond = ['живот заметно увеличен', 'учащённое сердцебиение', 'округление лица', 'растяжки на коже живота/бёдер', 'молозиво из сосков', 'судороги в ногах', 'изжога после жирной еды', 'потемнение ареол', 'пигментные пятна на лице'];
-    symptoms = getSeededRandomSymptoms(lateSecond, 5, weeks);
-    recommendations = '✓ Бандаж для поддержки живота, железосодержащие продукты (говядина/гречка), крем от растяжек, курсы для беременных.';
-} else if (weeks <= 27) {
-    const thirdStart = ['тяжесть в животе', 'отёки ног к вечеру', 'боли в пояснице', 'одышка при ходьбе', 'изжога усиливается', 'бессонница (трудно найти позу)', 'зуд кожи живота (растяжение)', 'активные толчки плода (видны через живот)', 'варикозное расширение вен', 'геморрой'];
-    symptoms = getSeededRandomSymptoms(thirdStart, 5, weeks);
-    recommendations = '✓ Сон на левом боку (подушка между ног), компрессионные чулки при варикозе, дробное питание от изжоги, КТГ плода.';
-} else if (weeks <= 36) {
-    const lateThird = ['сильная усталость', 'частые походы в туалет (каждые 30-60 мин)', 'тренировочные схватки Брэкстона-Хикса', 'тяжело дышать (матка давит на диафрагму)', 'отёки рук/лица по утрам', 'бессонница', 'боли в тазу (расхождение костей)', 'выделения усиливаются', 'пупок выворачивается наружу', 'походка утиная'];
-    symptoms = getSeededRandomSymptoms(lateThird, 6, weeks);
-    recommendations = '✓ Сбор сумки в роддом, упражнения Кегеля, массаж промежности (профилактика разрывов), КТГ еженедельно, выбрать роддом.';
-} else if (weeks <= 40) {
-    const preBirth = ['живот опустился (головка в таз)', 'отхождение слизистой пробки (кровянистые выделения)', 'схватки каждые 10-15 минут', 'подтекание околоплодных вод', 'диарея (организм чистится перед родами)', 'тянущие боли внизу живота', 'резкий прилив энергии (синдром гнездования)', 'потеря веса 1-2 кг за неделю', 'тошнота/рвота', 'давление на прямую кишку'];
-    symptoms = getSeededRandomSymptoms(preBirth, 5, weeks);
-    recommendations = '✓ НЕ ОТХОДИТЬ ДАЛЕКО ОТ ДОМА! Телефон роддома под рукой, документы готовы, партнёрские роды согласованы, считать интервалы между схватками.';
-} else {
-    symptoms = '⚠️ ПЕРЕНАШИВАНИЕ (>40 недель)! Плацента стареет, риск гипоксии плода, маловодие, кожа малыша сухая/шелушится.';
-    recommendations = '⚠️ СРОЧНО К ВРАЧУ! КТГ ежедневно, допплер сосудов, возможна стимуляция родов окситоцином или экстренное кесарево сечение.';
-}
+            let healthIcon = '✅', healthText = 'Норма', healthColor = '#00ff88';
+            if (p.healthStatus === 'warning') {
+                healthIcon = '⚠️'; healthText = 'Требует внимания'; healthColor = '#ffaa00';
+            } else if (p.healthStatus === 'critical') {
+                healthIcon = '🚨'; healthText = 'КРИТИЧЕСКОЕ'; healthColor = '#ff4444';
+            }
 
+            let riskFactors = [];
+            if (p.fetusCount >= 2) riskFactors.push('Многоплодная');
+            if (weeks >= 41) riskFactors.push('Перенашивание');
+            if (p.complications.length > 2) riskFactors.push('Множественные осложнения');
 
-        let healthIcon = '✅';
-        let healthText = 'Норма';
-        let healthColor = '#00ff88';
+            const riskHTML = riskFactors.length > 0 
+                ? `<div class="pregnancy-info-row"><span class="pregnancy-info-label">⚠️ Риски:</span><span class="pregnancy-info-value" style="color: #ffaa00; font-size: 11px;">${riskFactors.join(', ')}</span></div>`
+                : '';
 
-        if (s.healthStatus === 'warning') {
-            healthIcon = '⚠️';
-            healthText = 'Требует внимания';
-            healthColor = '#ffaa00';
-        } else if (s.healthStatus === 'critical') {
-            healthIcon = '🚨';
-            healthText = 'КРИТИЧЕСКОЕ';
-            healthColor = '#ff4444';
-        }
+            let complicationsHTML = '';
+            if (p.complications && p.complications.length > 0) {
+                const recent = p.complications.slice(-3).reverse();
+                complicationsHTML = `<div class="pregnancy-complications"><div class="pregnancy-complications-title">📋 Осложнения:</div>${recent.map(c => {
+                    const col = c.severity === 'critical' ? '#ff4444' : '#ffaa00';
+                    const ico = c.severity === 'critical' ? '🚨' : '⚠️';
+                    return `<div class="complication-item"><span style="color: ${col};">${ico}</span> <strong>${c.type}</strong> <span style="opacity: 0.5; font-size: 10px;">(${c.week} нед.)</span><div style="font-size: 11px; opacity: 0.7;">${c.description}</div></div>`;
+                }).join('')}</div>`;
+            }
 
-        let riskFactors = [];
-        if (s.fetusCount >= 2) riskFactors.push('Многоплодная беременность');
-        if (weeks >= 41) riskFactors.push('Перенашивание');
-        if (s.complications.length > 2) riskFactors.push('Множественные осложнения');
-
-        const riskHTML = riskFactors.length > 0 
-            ? `<div class="pregnancy-info-row">
-                   <span class="pregnancy-info-label">⚠️ Факторы риска:</span>
-                   <span class="pregnancy-info-value" style="color: #ffaa00; font-size: 11px;">
-                       ${riskFactors.join(', ')}
-                   </span>
-               </div>`
-            : '';
-
-        let complicationsHTML = '';
-        if (s.complications && s.complications.length > 0) {
-            const recentComplications = s.complications.slice(-3).reverse();
-            complicationsHTML = `
-                <div class="pregnancy-complications">
-                    <div class="pregnancy-complications-title">📋 История осложнений:</div>
-                    ${recentComplications.map(comp => {
-                        const severityColor = comp.severity === 'critical' ? '#ff4444' : '#ffaa00';
-                        const severityIcon = comp.severity === 'critical' ? '🚨' : '⚠️';
-                        return `
-                            <div class="complication-item">
-                                <div style="display: flex; align-items: center; gap: 5px;">
-                                    <span style="color: ${severityColor};">${severityIcon}</span>
-                                    <strong>${comp.type}</strong>
-                                    <span style="opacity: 0.5; font-size: 10px;">(${comp.week} нед.)</span>
-                                </div>
-                                <div style="font-size: 11px; opacity: 0.7; margin-top: 3px;">
-                                    ${comp.description}
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
+            monitorContent.innerHTML = `
+                <div class="pregnancy-info-row"><span class="pregnancy-info-label">🩺 Здоровье:</span><span class="pregnancy-info-value" style="color: ${healthColor};">${healthIcon} ${healthText}</span></div>
+                <div class="pregnancy-info-row"><span class="pregnancy-info-label">📅 Зачатие:</span><span class="pregnancy-info-value">${p.conceptionDate ? new Date(p.conceptionDate).toLocaleDateString('ru-RU') : '—'}</span></div>
+                <div class="pregnancy-info-row"><span class="pregnancy-info-label">🗓️ РП-дата:</span><span class="pregnancy-info-value" style="font-size: 10px; opacity: 0.7;">${p.rpDate ? new Date(p.rpDate).toLocaleDateString('ru-RU') : '—'}</span></div>
+                <div class="pregnancy-info-row"><span class="pregnancy-info-label">⏱️ Срок:</span><span class="pregnancy-info-value">${weeks} нед. ${days} дн.</span></div>
+                <div class="pregnancy-info-row"><span class="pregnancy-info-label">👶 Плоды:</span><span class="pregnancy-info-value">${fetusText} ${sexIcons}</span></div>
+                <div class="pregnancy-info-row"><span class="pregnancy-info-label">🗓️ ПДР:</span><span class="pregnancy-info-value">${dueDateStr}</span></div>
+                ${riskHTML}
+                <div class="pregnancy-progress-bar"><div class="pregnancy-progress-fill" style="width: ${progressPercent}%"></div></div>
+                <div style="text-align: center; font-size: 11px; opacity: 0.7; margin-bottom: 10px;">${progressPercent}% до родов</div>
+                <div class="pregnancy-symptoms"><div class="pregnancy-symptoms-title">🩺 Симптомы:</div><div class="pregnancy-symptoms-text">${symptoms}</div></div>
+                <div class="pregnancy-recommendations"><div class="pregnancy-recommendations-title">💡 Рекомендации:</div><div class="pregnancy-recommendations-text">${recommendations}</div></div>
+                ${complicationsHTML}
             `;
-        }
-
-        monitorContent.innerHTML = `
-            <div class="pregnancy-info-row">
-                <span class="pregnancy-info-label">🩺 Здоровье:</span>
-                <span class="pregnancy-info-value" style="color: ${healthColor};">
-                    ${healthIcon} ${healthText}
-                </span>
-            </div>
-
-            <div class="pregnancy-info-row">
-                <span class="pregnancy-info-label">📅 Дата зачатия:</span>
-                <span class="pregnancy-info-value">${s.conceptionDate ? new Date(s.conceptionDate).toLocaleDateString('ru-RU') : '—'}</span>
-            </div>
-
-            <div class="pregnancy-info-row">
-                <span class="pregnancy-info-label">🗓️ РП-дата:</span>
-                <span class="pregnancy-info-value" style="font-size: 10px; opacity: 0.7;">${s.rpDate ? new Date(s.rpDate).toLocaleDateString('ru-RU') : 'не определена'}</span>
-            </div>
-
-            <div class="pregnancy-info-row">
-                <span class="pregnancy-info-label">⏱️ Срок:</span>
-                <span class="pregnancy-info-value">${weeks} нед. ${days} дн.</span>
-            </div>
-
-            <div class="pregnancy-info-row">
-                <span class="pregnancy-info-label">👶 Плоды:</span>
-                <span class="pregnancy-info-value">${fetusText} ${sexIcons}</span>
-            </div>
-
-            <div class="pregnancy-info-row">
-                <span class="pregnancy-info-label">🗓️ ПДР:</span>
-                <span class="pregnancy-info-value">${dueDateStr}</span>
-            </div>
-
-            ${riskHTML}
-
-            <div class="pregnancy-progress-bar">
-                <div class="pregnancy-progress-fill" style="width: ${progressPercent}%"></div>
-            </div>
-            <div style="text-align: center; font-size: 11px; opacity: 0.7; margin-bottom: 10px;">
-                ${progressPercent}% до родов
-            </div>
-
-            <div class="pregnancy-symptoms">
-                <div class="pregnancy-symptoms-title">🩺 Текущие симптомы (${weeks} нед.):</div>
-                <div class="pregnancy-symptoms-text">${symptoms}</div>
-            </div>
-
-            <div class="pregnancy-recommendations">
-                <div class="pregnancy-recommendations-title">💡 Рекомендации:</div>
-                <div class="pregnancy-recommendations-text">${recommendations}</div>
-            </div>
-
-            ${complicationsHTML}
-        `;
         } else {
             monitorBlock.style.display = 'none';
         }
@@ -1460,7 +1190,7 @@ if (weeks <= 4) {
 
     const resetBtn = document.getElementById('repro-reset');
     if (resetBtn) {
-        resetBtn.style.display = s.isPregnant ? 'block' : 'none';
+        resetBtn.style.display = p.isPregnant ? 'block' : 'none';
     }
 
     const stats = document.getElementById('repro-stats');
@@ -1482,17 +1212,10 @@ function setupUI() {
         </div>
         <div class="inline-drawer-content">
             <div class="flex-container">
-                <label class="checkbox_label">
-                    <input type="checkbox" id="repro-enabled">
-                    <span>${L('enabled')}</span>
-                </label>
-                <label class="checkbox_label">
-                    <input type="checkbox" id="repro-notify">
-                    <span>${L('notifications')}</span>
-                </label>
+                <label class="checkbox_label"><input type="checkbox" id="repro-enabled"><span>${L('enabled')}</span></label>
+                <label class="checkbox_label"><input type="checkbox" id="repro-notify"><span>${L('notifications')}</span></label>
             </div>
             <hr>
-
             <div class="flex-container flexFlowColumn">
                 <label><strong>${L('contraceptionTitle')}</strong></label>
                 <select id="repro-contraception" class="text_pole">
@@ -1503,14 +1226,10 @@ function setupUI() {
                 </select>
             </div>
             <hr>
-
             <div class="flex-container flexFlowColumn">
                 <label><strong>${L('cycleDay')}</strong></label>
-                <div id="repro-currentcycle" style="padding: 5px; background: var(--SmartThemeBlurTintColor); border-radius: 5px;">
-                    <span>${s.cycleDay}</span>
-                </div>
+                <div id="repro-currentcycle" style="padding: 5px; background: var(--SmartThemeBlurTintColor); border-radius: 5px;"><span>${s.cycleDay}</span></div>
             </div>
-
             <div class="flex-container flexFlowColumn" style="margin-top: 10px;">
                 <div class="flex-container" style="gap: 5px; align-items: center;">
                     <input type="number" id="repro-cycleday" min="1" max="28" value="${s.cycleDay}" class="text_pole" style="width: 60px;">
@@ -1518,22 +1237,14 @@ function setupUI() {
                 </div>
             </div>
             <hr>
-
             <div class="flex-container flexFlowColumn">
                 <label><strong>${L('status')}</strong></label>
-                <div id="repro-status">
-                    <span style="opacity: 0.7;">${L('notPregnant')}</span>
-                </div>
+                <div id="repro-status"><span style="opacity: 0.7;">${L('notPregnant')}</span></div>
             </div>
-
             <details id="repro-pregnancy-monitor" style="display: none; margin-top: 15px;">
-                <summary style="cursor: pointer; font-weight: 600; color: #ff9ff3; padding: 8px; background: rgba(255,159,243,0.1); border-radius: 8px; user-select: none;">
-                    🤰 Мониторинг беременности
-                </summary>
-                <div id="repro-pregnancy-content" class="pregnancy-glass-panel">
-                </div>
+                <summary style="cursor: pointer; font-weight: 600; color: #ff9ff3; padding: 8px; background: rgba(255,159,243,0.1); border-radius: 8px;">🤰 Мониторинг беременности</summary>
+                <div id="repro-pregnancy-content" class="pregnancy-glass-panel"></div>
             </details>
-
             <div id="repro-manual-pregnancy" style="display: none; margin-top: 10px; padding: 10px; background: rgba(255,159,243,0.1); border-radius: 5px;">
                 <label style="font-size: 12px; opacity: 0.8;">Ручная установка:</label>
                 <div class="flex-container" style="gap: 5px; margin-top: 5px; flex-wrap: wrap;">
@@ -1542,162 +1253,44 @@ function setupUI() {
                         <option value="2">Двойня</option>
                         <option value="3">Тройня</option>
                     </select>
-                    <input id="repro-manual-weeks" type="number" class="text_pole" value="1" min="0" max="42" style="width: 60px;" title="Срок в неделях">
+                    <input id="repro-manual-weeks" type="number" class="text_pole" value="1" min="0" max="42" style="width: 60px;">
                     <span style="font-size: 11px; opacity: 0.7; align-self: center;">нед.</span>
                 </div>
                 <div class="flex-container" style="gap: 5px; margin-top: 8px; flex-wrap: wrap; align-items: center;">
                     <label style="font-size: 11px; opacity: 0.7;">РП-дата:</label>
-                    <input id="repro-manual-rpdate" type="date" class="text_pole" style="width: 140px;" title="Текущая дата в РП">
+                    <input id="repro-manual-rpdate" type="date" class="text_pole" style="width: 140px;">
                     <button id="repro-setpregnant" class="menu_button" style="padding: 5px 10px; background: #ff9ff3;">🤰 Установить</button>
                 </div>
             </div>
-
-            <button id="repro-toggle-manual" class="menu_button" style="margin-top: 10px; opacity: 0.6; font-size: 11px;">
-                Ручная беременность
-            </button>
-
-            <button id="repro-reset" class="menu_button redWarningBG" style="display: none; margin-top: 10px;">
-                ${L('reset')}
-            </button>
-
+            <button id="repro-toggle-manual" class="menu_button" style="margin-top: 10px; opacity: 0.6; font-size: 11px;">Ручная беременность</button>
+            <button id="repro-reset" class="menu_button redWarningBG" style="display: none; margin-top: 10px;">${L('reset')}</button>
             <hr>
             <small id="repro-stats" style="opacity: 0.5;">0 / 0</small>
         </div>
     </div>
 </div>
-
 <style>
-.reproductive-system-settings .inline-drawer-content {
-    padding: 10px;
-}
-.reproductive-system-settings hr {
-    margin: 10px 0;
-    border-color: var(--SmartThemeBorderColor);
-    opacity: 0.3;
-}
-.reproductive-system-settings select,
-.reproductive-system-settings input[type="number"] {
-    margin-top: 5px;
-}
-
-.pregnancy-glass-panel {
-    margin-top: 10px;
-    padding: 15px;
-    background: rgba(255, 159, 243, 0.08);
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
-    border: 1px solid rgba(255, 159, 243, 0.2);
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(255, 159, 243, 0.15);
-}
-
-.pregnancy-info-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 0;
-    border-bottom: 1px solid rgba(255, 159, 243, 0.1);
-}
-
-.pregnancy-info-row:last-child {
-    border-bottom: none;
-}
-
-.pregnancy-info-label {
-    font-size: 12px;
-    opacity: 0.7;
-}
-
-.pregnancy-info-value {
-    font-weight: 600;
-    color: #ff9ff3;
-}
-
-.pregnancy-progress-bar {
-    width: 100%;
-    height: 8px;
-    background: rgba(255, 159, 243, 0.15);
-    border-radius: 10px;
-    overflow: hidden;
-    margin: 10px 0 5px 0;
-}
-
-.pregnancy-progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #ff9ff3 0%, #ffc2d1 100%);
-    transition: width 0.3s ease;
-    border-radius: 10px;
-}
-
-.pregnancy-symptoms {
-    margin-top: 10px;
-    padding: 10px;
-    background: rgba(255, 159, 243, 0.05);
-    border-radius: 8px;
-    border-left: 3px solid #ff9ff3;
-}
-
-.pregnancy-symptoms-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: #ff9ff3;
-    margin-bottom: 5px;
-}
-
-.pregnancy-symptoms-text {
-    font-size: 11px;
-    line-height: 1.5;
-    opacity: 0.8;
-}
-
-.pregnancy-recommendations {
-    margin-top: 10px;
-    padding: 10px;
-    background: rgba(0, 255, 136, 0.05);
-    border-radius: 8px;
-    border-left: 3px solid #00ff88;
-}
-
-.pregnancy-recommendations-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: #00ff88;
-    margin-bottom: 5px;
-}
-
-.pregnancy-recommendations-text {
-    font-size: 11px;
-    line-height: 1.5;
-    opacity: 0.8;
-}
-
-.pregnancy-complications {
-    margin-top: 10px;
-    padding: 10px;
-    background: rgba(255, 68, 68, 0.05);
-    border-radius: 8px;
-    border-left: 3px solid #ff4444;
-}
-
-.pregnancy-complications-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: #ff4444;
-    margin-bottom: 8px;
-}
-
-.complication-item {
-    padding: 8px;
-    background: rgba(255, 68, 68, 0.05);
-    border-radius: 6px;
-    margin-bottom: 6px;
-}
-
-.complication-item:last-child {
-    margin-bottom: 0;
-}
-</style>
-`;
+.reproductive-system-settings .inline-drawer-content { padding: 10px; }
+.reproductive-system-settings hr { margin: 10px 0; border-color: var(--SmartThemeBorderColor); opacity: 0.3; }
+.reproductive-system-settings select, .reproductive-system-settings input[type="number"] { margin-top: 5px; }
+.pregnancy-glass-panel { margin-top: 10px; padding: 15px; background: rgba(255,159,243,0.08); backdrop-filter: blur(15px); border: 1px solid rgba(255,159,243,0.2); border-radius: 12px; box-shadow: 0 8px 32px rgba(255,159,243,0.15); }
+.pregnancy-info-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,159,243,0.1); }
+.pregnancy-info-row:last-child { border-bottom: none; }
+.pregnancy-info-label { font-size: 12px; opacity: 0.7; }
+.pregnancy-info-value { font-weight: 600; color: #ff9ff3; }
+.pregnancy-progress-bar { width: 100%; height: 8px; background: rgba(255,159,243,0.15); border-radius: 10px; overflow: hidden; margin: 10px 0 5px 0; }
+.pregnancy-progress-fill { height: 100%; background: linear-gradient(90deg, #ff9ff3 0%, #ffc2d1 100%); transition: width 0.3s; border-radius: 10px; }
+.pregnancy-symptoms { margin-top: 10px; padding: 10px; background: rgba(255,159,243,0.05); border-radius: 8px; border-left: 3px solid #ff9ff3; }
+.pregnancy-symptoms-title { font-size: 11px; font-weight: 600; color: #ff9ff3; margin-bottom: 5px; }
+.pregnancy-symptoms-text { font-size: 11px; line-height: 1.5; opacity: 0.8; }
+.pregnancy-recommendations { margin-top: 10px; padding: 10px; background: rgba(0,255,136,0.05); border-radius: 8px; border-left: 3px solid #00ff88; }
+.pregnancy-recommendations-title { font-size: 11px; font-weight: 600; color: #00ff88; margin-bottom: 5px; }
+.pregnancy-recommendations-text { font-size: 11px; line-height: 1.5; opacity: 0.8; }
+.pregnancy-complications { margin-top: 10px; padding: 10px; background: rgba(255,68,68,0.05); border-radius: 8px; border-left: 3px solid #ff4444; }
+.pregnancy-complications-title { font-size: 11px; font-weight: 600; color: #ff4444; margin-bottom: 8px; }
+.complication-item { padding: 8px; background: rgba(255,68,68,0.05); border-radius: 6px; margin-bottom: 6px; }
+.complication-item:last-child { margin-bottom: 0; }
+</style>`;
 
         $('#extensions_settings2').append(settingsHtml);
 
@@ -1713,9 +1306,7 @@ function setupUI() {
         });
 
         $('#repro-contraception').on('change', function() {
-            const value = this.value;
-            console.log('[Reproductive] Contraception changed to:', value);
-            getSettings().contraception = value;
+            getSettings().contraception = this.value;
             saveSettingsDebounced();
             updatePromptInjection();
             syncUI();
@@ -1723,73 +1314,56 @@ function setupUI() {
 
         $('#repro-setcycle').on('click', function() {
             const input = document.getElementById('repro-cycleday');
-            const value = parseInt(input.value) || 14;
-            const clamped = Math.max(1, Math.min(28, value));
-            input.value = clamped;
-
+            const value = Math.max(1, Math.min(28, parseInt(input.value) || 14));
+            input.value = value;
             const s = getSettings();
-            s.cycleDay = clamped;
+            s.cycleDay = value;
             s.lastCycleUpdate = Date.now();
-
-            console.log('[Reproductive] Cycle day set to:', clamped);
-
             saveSettingsDebounced();
-
             setTimeout(() => {
                 updatePromptInjection();
                 syncUI();
-                showNotification(`День цикла: ${clamped}`, 'info');
+                showNotification(`День цикла: ${value}`, 'info');
             }, 100);
         });
 
         $('#repro-toggle-manual').on('click', function() {
             const manualDiv = $('#repro-manual-pregnancy');
-            if (manualDiv.is(':visible')) {
-                manualDiv.slideUp(200);
-            } else {
-                manualDiv.slideDown(200);
-            }
+            manualDiv.is(':visible') ? manualDiv.slideUp(200) : manualDiv.slideDown(200);
         });
 
         $('#repro-setpregnant').on('click', function() {
             const s = getSettings();
+            const p = getPregnancyData();
             const count = parseInt($('#repro-manual-count').val());
-            const weeks = parseInt($('#repro-manual-weeks').val()) || 1;
+            const weeks = Math.max(0, Math.min(42, parseInt($('#repro-manual-weeks').val()) || 1));
             const rpDateInput = $('#repro-manual-rpdate').val();
 
-            s.isPregnant = true;
-            s.pregnancyWeeks = Math.max(0, Math.min(42, weeks));
-            s.fetusCount = count;
-            s.fetusSex = [];
+            p.isPregnant = true;
+            p.pregnancyWeeks = weeks;
+            p.fetusCount = count;
+            p.fetusSex = [];
 
             if (rpDateInput) {
-                s.rpDate = new Date(rpDateInput).toISOString();
-                const conceptionDate = calculateConceptionDate(new Date(s.rpDate), s.pregnancyWeeks);
-                if (conceptionDate) {
-                    s.conceptionDate = conceptionDate.toISOString();
-                } else {
-                    s.conceptionDate = new Date().toISOString();
-                }
+                p.rpDate = new Date(rpDateInput).toISOString();
+                const conceptionDate = calculateConceptionDate(new Date(p.rpDate), weeks);
+                p.conceptionDate = conceptionDate ? conceptionDate.toISOString() : new Date().toISOString();
             } else {
-                s.rpDate = new Date().toISOString();
-                s.conceptionDate = new Date().toISOString();
+                p.rpDate = new Date().toISOString();
+                p.conceptionDate = new Date().toISOString();
             }
 
             for (let i = 0; i < count; i++) {
-                const sexRoll = roll(2);
-                s.fetusSex.push(sexRoll === 1 ? 'M' : 'F');
+                p.fetusSex.push(roll(2) === 1 ? 'M' : 'F');
             }
 
             saveSettingsDebounced();
             updatePromptInjection();
             syncUI();
 
-            // FIX #2: Показываем пол в уведомлении
-            const sexText = s.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
-            const fetusText = s.fetusCount === 1 ? '1 плод' : 
-                              s.fetusCount === 2 ? 'Двойня' : 'Тройня';
-            const conceptionStr = s.conceptionDate ? new Date(s.conceptionDate).toLocaleDateString('ru-RU') : '—';
-            showNotification(`🤰 Беременность установлена!\nСрок: ${s.pregnancyWeeks} нед. | ${fetusText}\nПол: ${sexText} | Зачатие: ${conceptionStr}`, 'success');
+            const sexText = p.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
+            const fetusText = count === 1 ? '1 плод' : count === 2 ? 'Двойня' : 'Тройня';
+            showNotification(`🤰 Беременность установлена!\n${weeks} нед. | ${fetusText} | Пол: ${sexText}`, 'success');
 
             $('#repro-manual-pregnancy').slideUp(200);
         });
@@ -1813,9 +1387,48 @@ function loadSettings() {
         if (!extension_settings[extensionName]) {
             extension_settings[extensionName] = structuredClone(defaultSettings);
         } else {
+            // Миграция старых настроек в новую структуру
+            const s = extension_settings[extensionName];
+            
+            // Если есть старые данные беременности в корне - мигрируем
+            if (s.isPregnant !== undefined && !s.chatPregnancyData) {
+                console.log('[Reproductive] Migrating old pregnancy data to per-chat structure...');
+                s.chatPregnancyData = {};
+                
+                // Если была беременность - пытаемся сохранить для текущего чата
+                if (s.isPregnant) {
+                    const chatId = getCurrentChatId();
+                    if (chatId) {
+                        s.chatPregnancyData[chatId] = {
+                            isPregnant: s.isPregnant,
+                            conceptionDate: s.conceptionDate,
+                            pregnancyWeeks: s.pregnancyWeeks,
+                            rpDate: s.rpDate,
+                            fetusCount: s.fetusCount,
+                            fetusSex: s.fetusSex,
+                            complications: s.complications || [],
+                            healthStatus: s.healthStatus || 'normal',
+                            lastComplicationCheck: s.lastComplicationCheck
+                        };
+                    }
+                }
+                
+                // Удаляем старые поля из корня
+                delete s.isPregnant;
+                delete s.conceptionDate;
+                delete s.pregnancyWeeks;
+                delete s.rpDate;
+                delete s.fetusCount;
+                delete s.fetusSex;
+                delete s.complications;
+                delete s.healthStatus;
+                delete s.lastComplicationCheck;
+            }
+            
+            // Добавляем недостающие поля
             for (const key in defaultSettings) {
-                if (extension_settings[extensionName][key] === undefined) {
-                    extension_settings[extensionName][key] = defaultSettings[key];
+                if (s[key] === undefined) {
+                    s[key] = defaultSettings[key];
                 }
             }
         }
@@ -1849,43 +1462,20 @@ jQuery(async () => {
 
         eventSource.on(event_types.MESSAGE_RECEIVED, onMessageReceived);
 
-        // FIX #6: Улучшенная обработка смены чата
+        // При смене чата - просто обновляем UI для нового чата (данные хранятся per-chat)
         if (event_types.CHAT_CHANGED) { 
-            eventSource.on(event_types.CHAT_CHANGED, async () => {
-                console.log('[Reproductive] CHAT_CHANGED detected');
+            eventSource.on(event_types.CHAT_CHANGED, () => {
+                console.log('[Reproductive] CHAT_CHANGED - switching to chat-specific data');
+                const chatId = getCurrentChatId();
+                console.log('[Reproductive] Current chat ID:', chatId);
                 
-                const s = getSettings();
-                const newChatId = getCurrentChatId();
-                
-                // Если это действительно новый чат (а не перезагрузка того же)
-                if (newChatId && newChatId !== s.currentChatId) {
-                    console.log(`[Reproductive] New chat detected: ${s.currentChatId} -> ${newChatId}`);
-                    s.currentChatId = newChatId;
-                    
-                    // Сбрасываем данные беременности для нового чата
-                    resetChatSpecificData();
-                    
-                    if (s.showNotifications) {
-                        showNotification('🔄 Новый чат: данные беременности сброшены', 'info');
-                    }
-                } else if (!s.currentChatId && newChatId) {
-                    // Первая инициализация
-                    s.currentChatId = newChatId;
-                    saveSettingsDebounced();
-                }
-                
-                // Также сбрасываем глобальные переменные если они используются
-                if (typeof setGlobalVariable === 'function') {
-                    await setGlobalVariable('pregnant', 'false');
-                    await setGlobalVariable('conception_date', '');
-                    await setGlobalVariable('weeks_pregnant', '0');
-                    await setGlobalVariable('embryo_count', '0');
-                    await setGlobalVariable('embryo_sexes', '');
-                }
-                
-                console.log('[Reproductive] Chat change handled');
+                // Просто обновляем UI - данные автоматически подтянутся из chatPregnancyData
+                syncUI();
+                updatePromptInjection();
             }); 
         }
+
+        console.log('[Reproductive] System Ready!');
 
     } catch (error) {
         console.error('[Reproductive] System FATAL ERROR:', error);
