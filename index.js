@@ -38,7 +38,8 @@ const defaultPregnancyData = {
     fetusSex: [],
     complications: [],
     healthStatus: 'normal',
-    lastComplicationCheck: null
+    lastComplicationCheck: null,
+    lastComplicationCheckRpDate: null
 };
 
 const CHANCES = {
@@ -737,6 +738,7 @@ function checkComplications() {
     const p = getPregnancyData();
     
     if (!p.isPregnant) return;
+    if (!p.rpDate) return; // Нужна RP-дата для проверки
 
     let weeks = p.pregnancyWeeks || 0;
     if (weeks === 0 && p.conceptionDate) {
@@ -744,13 +746,22 @@ function checkComplications() {
         weeks = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7));
     }
 
-    const now = Date.now();
-    if (p.lastComplicationCheck) {
-        const daysSinceCheck = Math.floor((now - p.lastComplicationCheck) / 86400000);
-        if (daysSinceCheck < 7) return;
+    // Проверка по RP-времени
+    const currentRpDate = new Date(p.rpDate);
+    
+    if (p.lastComplicationCheckRpDate) {
+        const lastCheckRpDate = new Date(p.lastComplicationCheckRpDate);
+        const daysSinceCheckRp = Math.floor((currentRpDate - lastCheckRpDate) / 86400000);
+        
+        // Если в RP прошло меньше 7 дней - пропускаем
+        if (daysSinceCheckRp < 7) {
+            console.log(`[Reproductive] Complication check skipped: only ${daysSinceCheckRp} RP days since last check`);
+            return;
+        }
     }
 
-    p.lastComplicationCheck = now;
+    // Запоминаем RP-дату проверки
+    p.lastComplicationCheckRpDate = p.rpDate;
 
     if (s.showNotifications) {
         showNotification(`🩺 Проверка здоровья (${weeks} нед.)...`, 'info');
@@ -762,6 +773,8 @@ function checkComplications() {
 
     const complicationRoll = roll(100);
 
+    console.log(`[Reproductive] Complication check: roll=${complicationRoll}, threshold=${baseChance}`);
+
     if (complicationRoll <= baseChance) {
         const types = getComplicationTypes(weeks);
         const complication = types[Math.floor(Math.random() * types.length)];
@@ -771,6 +784,7 @@ function checkComplications() {
             type: complication.type,
             severity: complication.severity,
             description: complication.description,
+            rpDate: p.rpDate,
             date: new Date().toISOString()
         });
 
@@ -792,6 +806,7 @@ function checkComplications() {
         if (s.showNotifications) {
             showNotification(`✅ Проверка пройдена: всё в норме!`, 'success');
         }
+        saveSettingsDebounced();
     }
 }
 
