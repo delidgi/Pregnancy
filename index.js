@@ -180,6 +180,7 @@ function parseRpDate(text) {
     
     let parsedDate = null;
 
+    // Паттерн 1: "Дата: 21 октября 2023" или "Date: 21 October 2023"
     const dayMonthYearMatch = text.match(/(?:[Дд]ата|[Dd]ate).*?(\d{1,2})\s+([А-Яа-яA-Za-z]+),?\s+(\d{4})/i);
     
     if (dayMonthYearMatch) {
@@ -204,6 +205,7 @@ function parseRpDate(text) {
         }
     }
 
+    // Паттерн 2: "Дата: Октябрь 21, 2023"
     const longFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate)[:\s]+(?:[А-Яа-яA-Za-z]+,?\s*)?([А-Яа-яA-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})/i);
     if (longFormatMatch) {
         const monthStr = longFormatMatch[1].toLowerCase();
@@ -227,6 +229,7 @@ function parseRpDate(text) {
         }
     }
    
+    // Паттерн 3: "Дата: 21.10.2023" или "Дата: 21/10/2023"
     const shortFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate).*?(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})/i);
     if (shortFormatMatch) {
         const day = parseInt(shortFormatMatch[1]);
@@ -240,6 +243,7 @@ function parseRpDate(text) {
         }
     }
 
+    // Паттерн 4: "Дата: 2023-10-21" (ISO)
     const isoFormatMatch = text.match(/(?:[Дд]ата|[Dd]ate)[:\s]+(\d{4})-(\d{2})-(\d{2})/i);
     if (isoFormatMatch) {
         const year = parseInt(isoFormatMatch[1]);
@@ -249,6 +253,46 @@ function parseRpDate(text) {
         if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
             parsedDate = new Date(year, month, day);
             console.log(`[Reproductive] Parsed RP date (ISO format): ${parsedDate.toISOString()}`);
+            return parsedDate;
+        }
+    }
+    
+    // === ПАТТЕРНЫ БЕЗ СЛОВА "ДАТА" ===
+    
+    // Паттерн 5: "Пятница, 21.10.2023" или просто "21.10.2023" (в начале строки или после запятой)
+    const standaloneShortMatch = text.match(/(?:^|[,\s])(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})(?:\s|,|$)/m);
+    if (standaloneShortMatch) {
+        const day = parseInt(standaloneShortMatch[1]);
+        const month = parseInt(standaloneShortMatch[2]) - 1;
+        const year = parseInt(standaloneShortMatch[3]);
+        
+        if (month >= 0 && month <= 11 && day >= 1 && day <= 31 && year >= 1900 && year <= 2100) {
+            parsedDate = new Date(year, month, day);
+            console.log(`[Reproductive] Parsed RP date (standalone short): ${parsedDate.toISOString()}`);
+            return parsedDate;
+        }
+    }
+    
+    // Паттерн 6: "21 октября 2023" без слова "Дата"
+    const standaloneFullMatch = text.match(/(\d{1,2})\s+([А-Яа-яA-Za-z]+)\s+(\d{4})/);
+    if (standaloneFullMatch) {
+        const day = parseInt(standaloneFullMatch[1]);
+        const monthStr = standaloneFullMatch[2].toLowerCase();
+        const year = parseInt(standaloneFullMatch[3]);
+        
+        let month = -1;
+        for (const [key, val] of Object.entries(monthsRu)) {
+            if (monthStr.startsWith(key)) { month = val; break; }
+        }
+        if (month === -1) {
+            for (const [key, val] of Object.entries(monthsEn)) {
+                if (monthStr.startsWith(key)) { month = val; break; }
+            }
+        }
+        
+        if (month !== -1 && day >= 1 && day <= 31 && year >= 1900 && year <= 2100) {
+            parsedDate = new Date(year, month, day);
+            console.log(`[Reproductive] Parsed RP date (standalone full): ${parsedDate.toISOString()}`);
             return parsedDate;
         }
     }
@@ -275,6 +319,7 @@ function parseAIStatus(text) {
     const s = getSettings();
     const p = getPregnancyData();
     let updated = false;
+    let rpDateChanged = false;
 
     console.log('[Reproductive] Parsing AI status block...');
 
@@ -284,7 +329,17 @@ function parseAIStatus(text) {
         p.rpDate = rpDate.toISOString();
         if (oldRpDate !== p.rpDate) {
             console.log(`[Reproductive] RP date updated: ${p.rpDate}`);
+            rpDateChanged = true;
             updated = true;
+            
+            // Если уже беременна и rpDate изменился - пересчитать conceptionDate
+            if (p.isPregnant && p.pregnancyWeeks > 0) {
+                const newConceptionDate = calculateConceptionDate(new Date(p.rpDate), p.pregnancyWeeks);
+                if (newConceptionDate) {
+                    p.conceptionDate = newConceptionDate.toISOString();
+                    console.log(`[Reproductive] Recalculated conception date: ${p.conceptionDate}`);
+                }
+            }
         }
     }
 
@@ -410,6 +465,7 @@ function parseAIStatus(text) {
                 console.log(`[Reproductive] Pregnancy week mismatch: ours=${p.pregnancyWeeks}, AI=${weeks}. Resyncing...`);
                 p.pregnancyWeeks = weeks;
                 
+                // Пересчитываем conceptionDate на основе rpDate и новых недель
                 if (p.rpDate) {
                     const conceptionDate = calculateConceptionDate(new Date(p.rpDate), weeks);
                     if (conceptionDate) {
