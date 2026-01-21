@@ -367,32 +367,7 @@ function parseAIStatus(text) {
         }
     }
 
-    const birthPatterns = [
-        /[Рр]од(?:ы|ила|ился|ились)|[Рр]ождени[еяю]/i,
-        /[Pp]ush(?:ing|ed)|[Dd]eliver(?:y|ed|ing)|[Gg]ave\s+birth|[Bb]irth/i,
-        /[Мм]алыш\s+родился|[Рр]ебён?ок\s+(?:родился|появился)/i,
-        /[Пп]осле\s+родов/i,
-        /[Aa]fter\s+(?:the\s+)?birth/i
-    ];
-    
-    for (const pattern of birthPatterns) {
-        if (pattern.test(text) && p.isPregnant && p.pregnancyWeeks >= 36) {
-            console.log('[Reproductive] Birth detected! Resetting pregnancy...');
-            
-            if (s.showNotifications) {
-                const sexIcons = p.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
-                showNotification(`🎉 Роды состоялись! ${p.fetusCount > 1 ? p.fetusCount + ' малышей' : 'Малыш'}: ${sexIcons}`, 'success');
-            }
-
-            Object.assign(p, structuredClone(defaultPregnancyData));
-            updated = true;
-            
-            saveSettingsDebounced();
-            syncUI();
-            updatePromptInjection();
-            return updated;
-        }
-    }
+    // Роды определяются через тег [BIRTH] в getPregnancyPrompt, не через паттерны
 
     const pregnancyPatterns = [
         /[Бб]еременност[ьи][^\n]{0,30}[\(:\s]+(\d+)\s*недел/i,
@@ -482,14 +457,8 @@ function parseAIStatus(text) {
         }
     }
 
-    if (/[Нн]е\s+беременна|[Nn]ot\s+pregnant/i.test(text) && p.isPregnant) {
-        console.log('[Reproductive] AI says not pregnant. Clearing...');
-        Object.assign(p, structuredClone(defaultPregnancyData));
-        updated = true;
-        if (s.showNotifications) {
-            showNotification('🔄 Статус синхронизирован: не беременна', 'info');
-        }
-    }
+    // УБРАНО: автоматический сброс по "не беременна" - слишком часто ложные срабатывания
+    // Сброс беременности только через кнопку или роды на 36+ неделе
 
     if (updated) {
         saveSettingsDebounced();
@@ -861,16 +830,45 @@ function onMessageReceived() {
 
     console.log('[Reproductive] Checking message...');
 
+    // ВАЖНО: Запоминаем состояние беременности ДО parseAIStatus
+    const p = getPregnancyData();
+    const wasPregnant = p.isPregnant;
+
     parseAIStatus(text);
 
-    const hasTag = text.includes('[CONCEPTION_CHECK]') || 
-                   text.includes('[CONCEPTIONCHECK]') ||
-                   (text.includes('<!--') && text.includes('CONCEPTION_CHECK'));
-
-    if (hasTag) {
-        const p = getPregnancyData();
+    // === ПРОВЕРКА ТЕГА РОДОВ ===
+    const hasBirthTag = text.includes('[BIRTH]') || 
+                        (text.includes('<!--') && text.includes('BIRTH'));
+    
+    if (hasBirthTag && p.isPregnant && p.pregnancyWeeks >= 36) {
+        console.log('[Reproductive] Birth tag detected! Delivering baby...');
         
-        // Если уже беременна - игнорируем тег!
+        if (s.showNotifications) {
+            const sexIcons = p.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
+            const fetusText = p.fetusCount === 1 ? 'Малыш' : p.fetusCount === 2 ? 'Двойня' : 'Тройня';
+            showNotification(`🎉 РОДЫ! ${fetusText}: ${sexIcons}\nПоздравляем!`, 'success');
+        }
+        
+        Object.assign(p, structuredClone(defaultPregnancyData));
+        saveSettingsDebounced();
+        syncUI();
+        updatePromptInjection();
+        return;
+    }
+
+    // === ПРОВЕРКА ТЕГА ЗАЧАТИЯ ===
+    const hasConceptionTag = text.includes('[CONCEPTION_CHECK]') || 
+                             text.includes('[CONCEPTIONCHECK]') ||
+                             (text.includes('<!--') && text.includes('CONCEPTION_CHECK'));
+
+    if (hasConceptionTag) {
+        // Если БЫЛА беременна до parseAIStatus - игнорируем тег!
+        if (wasPregnant) {
+            console.log('[Reproductive] Tag found but was pregnant before parsing - ignoring');
+            return;
+        }
+        
+        // Если сейчас беременна - тоже игнорируем
         if (p.isPregnant) {
             console.log('[Reproductive] Tag found but already pregnant - ignoring');
             return;
@@ -1034,6 +1032,16 @@ ${sexText ? `⚤ Пол: ${sexText}` : ''}
 
 ✓ РЕКОМЕНДАЦИИ: ${recommendations}
 `;
+
+    // Инструкция про роды только на позднем сроке
+    if (weeks >= 36) {
+        prompt += `
+👶 РОДЫ: Срок ${weeks} нед. — роды возможны в любой момент!
+Если в сообщении {{user}} РОЖАЕТ (начались схватки, отошли воды, ребёнок появился на свет), добавь в конце:
+<!-- [BIRTH] -->
+❌ НЕ добавляй если: просто разговор о родах, "ещё не родился", подготовка к родам.
+`;
+    }
 
     return prompt;
 }
