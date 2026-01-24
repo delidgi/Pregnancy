@@ -26,7 +26,120 @@ const defaultSettings = {
     totalConceptions: 0,
     currentChatId: null,
     chatPregnancyData: {},
-    lastCheckedMessageId: null
+    lastCheckedMessageId: null,
+    // Настройки расы/вида
+    racePreset: 'human',
+    pregnancyDuration: 40,      // недель
+    fertilityModifier: 1.0,     // множитель шанса зачатия
+    twinsChance: 3,             // % шанс двойни
+    tripletsChance: 0.1,        // % шанс тройни
+    cycleLength: 28,            // длина цикла в днях
+    customRaceName: '',         // название кастомной расы
+    specialTraits: []           // особые черты
+};
+
+// Пресеты для разных рас
+const RACE_PRESETS = {
+    human: {
+        name: '👤 Человек',
+        nameEn: '👤 Human',
+        pregnancyDuration: 40,
+        fertilityModifier: 1.0,
+        twinsChance: 3,
+        tripletsChance: 0.1,
+        cycleLength: 28,
+        specialTraits: []
+    },
+    elf: {
+        name: '🧝 Эльф',
+        nameEn: '🧝 Elf',
+        pregnancyDuration: 52,      // год
+        fertilityModifier: 0.3,     // низкая плодовитость
+        twinsChance: 1,
+        tripletsChance: 0.01,
+        cycleLength: 45,            // длинный цикл
+        specialTraits: ['долгая беременность', 'лёгкие роды', 'быстрое восстановление']
+    },
+    vampire: {
+        name: '🧛 Вампир',
+        nameEn: '🧛 Vampire',
+        pregnancyDuration: 24,      // быстрее
+        fertilityModifier: 0.1,     // очень редко
+        twinsChance: 5,
+        tripletsChance: 0.5,
+        cycleLength: 30,
+        specialTraits: ['нужна кровь', 'ночная активность плода', 'болезненные роды']
+    },
+    werewolf: {
+        name: '🐺 Оборотень',
+        nameEn: '🐺 Werewolf',
+        pregnancyDuration: 16,      // как у волков ~4 месяца
+        fertilityModifier: 1.5,
+        twinsChance: 15,            // часто несколько щенков
+        tripletsChance: 5,
+        cycleLength: 21,
+        specialTraits: ['привязана к лунному циклу', 'сильный материнский инстинкт', 'многоплодность']
+    },
+    catgirl: {
+        name: '🐱 Кошко-девочка',
+        nameEn: '🐱 Catgirl',
+        pregnancyDuration: 20,      // ~5 месяцев
+        fertilityModifier: 1.8,     // высокая плодовитость
+        twinsChance: 25,
+        tripletsChance: 10,
+        cycleLength: 14,            // короткий цикл
+        specialTraits: ['течка', 'многоплодность', 'быстрое развитие']
+    },
+    demon: {
+        name: '😈 Демон/Суккуб',
+        nameEn: '😈 Demon/Succubus',
+        pregnancyDuration: 30,
+        fertilityModifier: 0.5,
+        twinsChance: 8,
+        tripletsChance: 2,
+        cycleLength: 28,
+        specialTraits: ['питается энергией', 'ускоренное развитие', 'магические способности плода']
+    },
+    dragon: {
+        name: '🐉 Дракон/Драконид',
+        nameEn: '🐉 Dragon/Dragonkin',
+        pregnancyDuration: 80,      // очень долго
+        fertilityModifier: 0.05,    // крайне редко
+        twinsChance: 0.5,
+        tripletsChance: 0.01,
+        cycleLength: 90,
+        specialTraits: ['яйцекладка возможна', 'огненное дыхание плода', 'чешуйки на животе']
+    },
+    fairy: {
+        name: '🧚 Фея/Пикси',
+        nameEn: '🧚 Fairy/Pixie',
+        pregnancyDuration: 12,      // 3 месяца
+        fertilityModifier: 2.0,
+        twinsChance: 20,
+        tripletsChance: 8,
+        cycleLength: 7,
+        specialTraits: ['крошечный плод', 'светящийся живот', 'магическая аура']
+    },
+    alien: {
+        name: '👽 Инопланетянин',
+        nameEn: '👽 Alien',
+        pregnancyDuration: 28,
+        fertilityModifier: 0.7,
+        twinsChance: 10,
+        tripletsChance: 3,
+        cycleLength: 35,
+        specialTraits: ['нестандартное развитие', 'телепатическая связь', 'особые потребности']
+    },
+    custom: {
+        name: '⚙️ Свои настройки',
+        nameEn: '⚙️ Custom',
+        pregnancyDuration: 40,
+        fertilityModifier: 1.0,
+        twinsChance: 3,
+        tripletsChance: 0.1,
+        cycleLength: 28,
+        specialTraits: []
+    }
 };
 
 const defaultPregnancyData = {
@@ -56,9 +169,8 @@ const CHANCES = {
         condom: 85,
         pill: 91,
         iud: 99
-    },
-    twins: 3,
-    triplets: 0.1
+    }
+    // twins и triplets теперь берутся из настроек расы
 };
 
 const LANG = {
@@ -310,8 +422,10 @@ function calculateConceptionDate(rpDate, weeksPregnant) {
 
 function calculateDueDate(conceptionDate) {
     if (conceptionDate) {
+        const s = getSettings();
+        const duration = s.pregnancyDuration || 40; // недели из настроек расы
         const conception = new Date(conceptionDate);
-        const dueDate = new Date(conception.getTime() + (40 * 7 * 24 * 60 * 60 * 1000));
+        const dueDate = new Date(conception.getTime() + (duration * 7 * 24 * 60 * 60 * 1000));
         return dueDate;
     }
     return null;
@@ -608,7 +722,8 @@ function checkConception() {
     s.totalChecks++;
 
     const cycleModifier = getCycleModifier(s.cycleDay);
-    let chance = Math.round(CHANCES.base * cycleModifier);
+    // Применяем модификатор плодовитости расы
+    let chance = Math.round(CHANCES.base * cycleModifier * (s.fertilityModifier || 1.0));
 
     const contraceptionEff = CHANCES.contraception[s.contraception];
     let contraceptionFailed = false;
@@ -628,7 +743,7 @@ function checkConception() {
     const conceptionRoll = roll(100);
     const success = conceptionRoll <= chance;
 
-    console.log(`[Reproductive] Check: roll=${conceptionRoll}, need<=${chance}, result=${success ? 'PREGNANT' : 'no'}`);
+    console.log(`[Reproductive] Check: roll=${conceptionRoll}, need<=${chance}, fertilityMod=${s.fertilityModifier}, result=${success ? 'PREGNANT' : 'no'}`);
 
     const result = {
         roll: conceptionRoll,
@@ -654,10 +769,14 @@ function checkConception() {
         p.pregnancyWeeks = 0;
         s.totalConceptions++;
 
+        // Используем шансы многоплодности из настроек расы
+        const twinsChance = s.twinsChance || 3;
+        const tripletsChance = s.tripletsChance || 0.1;
+        
         const multiplesRoll = roll(1000) / 10;
-        if (multiplesRoll <= CHANCES.triplets) {
+        if (multiplesRoll <= tripletsChance) {
             p.fetusCount = 3;
-        } else if (multiplesRoll <= CHANCES.twins) {
+        } else if (multiplesRoll <= twinsChance) {
             p.fetusCount = 2;
         } else {
             p.fetusCount = 1;
@@ -692,15 +811,18 @@ function checkComplications() {
     if (!p.isPregnant) return;
     if (!p.rpDate) return;
 
-    let weeks = p.pregnancyWeeks || 0;
-    // Если недели не заданы, вычисляем от RP-даты (НЕ от реального времени!)
-    if (weeks === 0 && p.conceptionDate && p.rpDate) {
+    let weeks = 0;
+    // Приоритет: вычисляем из RP-дат
+    if (p.conceptionDate && p.rpDate) {
         const rpTime = new Date(p.rpDate).getTime();
         const conceptionTime = new Date(p.conceptionDate).getTime();
         const diffMs = rpTime - conceptionTime;
         if (diffMs > 0) {
             weeks = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7));
         }
+    } else {
+        // Фоллбэк на сохранённые недели
+        weeks = p.pregnancyWeeks || 0;
     }
 
     const currentRpDate = new Date(p.rpDate);
@@ -1021,7 +1143,10 @@ function onMessageReceived() {
     const hasBirthTag = text.includes('[BIRTH]') || 
                         (text.includes('<!--') && text.includes('BIRTH'));
     
-    if (hasBirthTag && p.isPregnant && p.pregnancyWeeks >= 36) {
+    const duration = s.pregnancyDuration || 40;
+    const birthThreshold = Math.floor(duration * 0.9); // 90% от срока
+    
+    if (hasBirthTag && p.isPregnant && p.pregnancyWeeks >= birthThreshold) {
         console.log('[Reproductive] Birth tag detected! Delivering baby...');
         
         if (s.showNotifications) {
@@ -1141,55 +1266,70 @@ function getPregnancyPrompt() {
     
     if (!p.isPregnant) return '';
 
-    let weeks = p.pregnancyWeeks || 0;
-    // Если недели не заданы напрямую, вычисляем от RP-даты (НЕ от реального времени!)
-    if (weeks === 0 && p.conceptionDate && p.rpDate) {
+    const duration = s.pregnancyDuration || 40;
+    
+    let weeks = 0;
+    // Приоритет: вычисляем из RP-дат
+    if (p.conceptionDate && p.rpDate) {
         const rpTime = new Date(p.rpDate).getTime();
         const conceptionTime = new Date(p.conceptionDate).getTime();
         const diffMs = rpTime - conceptionTime;
         if (diffMs > 0) {
             weeks = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7));
         }
+    } else {
+        // Фоллбэк на сохранённые недели
+        weeks = p.pregnancyWeeks || 0;
     }
 
+    // Рассчитываем процент беременности для масштабирования симптомов
+    const progressPercent = (weeks / duration) * 100;
+    
     let symptoms = '';
     let recommendations = '';
     
-    if (weeks <= 4) {
+    // Симптомы масштабируются по проценту беременности
+    if (progressPercent <= 10) {
         const early = ['задержка менструации', 'лёгкая тошнота по утрам', 'повышенная усталость', 'перепады настроения', 'обострение обоняния', 'покалывание в груди', 'сонливость днём', 'лёгкие спазмы внизу живота'];
         symptoms = getSeededRandomSymptoms(early, 3, weeks);
-        recommendations = 'Фолиевая кислота 400 мкг/день, тест на ХГЧ, избегать алкоголя/курения';
-    } else if (weeks <= 8) {
-        const firstTrim = ['токсикоз (рвота 2-5 раз в день)', 'чувствительность груди', 'частое мочеиспускание', 'металлический привкус во рту', 'отвращение к запахам', 'головокружение', 'запоры', 'эмоциональная нестабильность'];
+        recommendations = 'Начальная стадия, отдых, правильное питание';
+    } else if (progressPercent <= 20) {
+        const firstTrim = ['токсикоз (тошнота/рвота)', 'чувствительность груди', 'частое мочеиспускание', 'металлический привкус во рту', 'отвращение к запахам', 'головокружение', 'запоры', 'эмоциональная нестабильность'];
         symptoms = getSeededRandomSymptoms(firstTrim, 4, weeks);
-        recommendations = 'Встать на учёт до 12 недель, первый скрининг УЗИ, дробное питание';
-    } else if (weeks <= 12) {
+        recommendations = 'Первый триместр, наблюдение, дробное питание';
+    } else if (progressPercent <= 30) {
         const earlySecond = ['живот начинает округляться', 'токсикоз ослабевает', 'эмоциональные перепады', 'пигментация кожи', 'венозная сетка на груди', 'повышенный аппетит', 'одышка при подъёме'];
         symptoms = getSeededRandomSymptoms(earlySecond, 4, weeks);
-        recommendations = 'Контроль веса (+0.3-0.5 кг/неделю), кальций, избегать горячих ванн';
-    } else if (weeks <= 16) {
+        recommendations = 'Контроль веса, витамины, избегать перегрева';
+    } else if (progressPercent <= 40) {
         const midSecond = ['первые шевеления плода', 'либидо возрастает', 'энергия возвращается', 'грудь увеличивается', 'волосы гуще', 'судороги в икрах', 'заложенность носа'];
         symptoms = getSeededRandomSymptoms(midSecond, 4, weeks);
-        recommendations = 'Второй скрининг определит пол, массаж от растяжек, витамин D3';
-    } else if (weeks <= 20) {
+        recommendations = 'Середина срока, можно определить пол, массаж от растяжек';
+    } else if (progressPercent <= 50) {
         const lateSecond = ['живот заметно увеличен', 'учащённое сердцебиение', 'растяжки', 'молозиво из сосков', 'судороги в ногах', 'изжога', 'потемнение ареол'];
         symptoms = getSeededRandomSymptoms(lateSecond, 5, weeks);
-        recommendations = 'Бандаж для живота, железосодержащие продукты, крем от растяжек';
-    } else if (weeks <= 27) {
+        recommendations = 'Бандаж для живота, железо, крем от растяжек';
+    } else if (progressPercent <= 70) {
         const thirdStart = ['тяжесть в животе', 'отёки ног к вечеру', 'боли в пояснице', 'одышка при ходьбе', 'изжога', 'бессонница', 'активные толчки плода', 'варикоз'];
         symptoms = getSeededRandomSymptoms(thirdStart, 5, weeks);
-        recommendations = 'Сон на левом боку, компрессионные чулки, КТГ';
-    } else if (weeks <= 36) {
+        recommendations = 'Сон на левом боку, отдых, регулярное наблюдение';
+    } else if (progressPercent <= 90) {
         const lateThird = ['сильная усталость', 'частые походы в туалет', 'тренировочные схватки', 'тяжело дышать', 'отёки', 'бессонница', 'боли в тазу', 'утиная походка'];
         symptoms = getSeededRandomSymptoms(lateThird, 6, weeks);
-        recommendations = 'Сбор сумки в роддом, упражнения Кегеля, КТГ еженедельно';
-    } else if (weeks <= 40) {
-        const preBirth = ['живот опустился', 'отхождение пробки', 'схватки каждые 10-15 минут', 'подтекание вод', 'диарея', 'тянущие боли', 'синдром гнездования'];
+        recommendations = 'Подготовка к родам, упражнения, частое наблюдение';
+    } else if (progressPercent <= 100) {
+        const preBirth = ['живот опустился', 'отхождение пробки', 'схватки учащаются', 'подтекание вод', 'диарея', 'тянущие боли', 'синдром гнездования'];
         symptoms = getSeededRandomSymptoms(preBirth, 5, weeks);
-        recommendations = 'НЕ УХОДИТЬ ДАЛЕКО! Телефон роддома под рукой';
+        recommendations = 'РОДЫ СКОРО! Быть готовой!';
     } else {
-        symptoms = '⚠️ ПЕРЕНАШИВАНИЕ (>40 недель)! Риск гипоксии плода';
-        recommendations = '⚠️ СРОЧНО К ВРАЧУ! Возможна стимуляция';
+        symptoms = `⚠️ ПЕРЕНАШИВАНИЕ (>${duration} недель)! Риск осложнений`;
+        recommendations = '⚠️ СРОЧНО! Возможна стимуляция родов';
+    }
+    
+    // Добавляем особые черты расы к симптомам
+    const traits = s.specialTraits || [];
+    if (traits.length > 0) {
+        symptoms += ` | Особенности: ${traits.join(', ')}`;
     }
 
     let conceptionDateStr = p.conceptionDate ? new Date(p.conceptionDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
@@ -1208,27 +1348,32 @@ function getPregnancyPrompt() {
     }
 
     const fetusText = p.fetusCount === 1 ? 'одним плодом' : p.fetusCount === 2 ? 'двойней' : 'тройней';
+    
+    // Определяем название расы
+    const raceName = s.racePreset === 'custom' ? (s.customRaceName || 'Особая раса') : (RACE_PRESETS[s.racePreset]?.name || 'Человек');
 
     let prompt = `
 
 [OOC: 🤰 БЕРЕМЕННОСТЬ — АКТИВНА]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-📅 Срок: ${weeks} недель из 40
+🧬 Раса: ${raceName}
+📅 Срок: ${weeks} недель из ${duration}
 👶 Беременна ${fetusText}
 ${sexText ? `⚤ Пол: ${sexText}` : ''}
 📆 Зачатие: ${conceptionDateStr}
 🗓️ ПДР: ${dueDateStr}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-💊 СИМПТОМЫ (${weeks} нед.): ${symptoms}
+💊 СИМПТОМЫ (${Math.round(progressPercent)}%): ${symptoms}
 
 ✓ РЕКОМЕНДАЦИИ: ${recommendations}
 `;
 
-    // Инструкция про роды только на позднем сроке
-    if (weeks >= 36) {
+    // Инструкция про роды когда >= 90% срока
+    const birthThreshold = Math.floor(duration * 0.9);
+    if (weeks >= birthThreshold) {
         prompt += `
-👶 РОДЫ: Срок ${weeks} нед. — роды возможны в любой момент!
+👶 РОДЫ: Срок ${weeks}/${duration} нед. — роды возможны в любой момент!
 Если в сообщении {{user}} РОЖАЕТ (начались схватки, отошли воды, ребёнок появился на свет), добавь в конце:
 <!-- [BIRTH] -->
 ❌ НЕ добавляй если: просто разговор о родах, "ещё не родился", подготовка к родам.
@@ -1341,10 +1486,10 @@ function syncUI() {
         if (p.isPregnant && (p.pregnancyWeeks > 0 || p.conceptionDate)) {
             monitorBlock.style.display = 'block';
 
-            let weeks = p.pregnancyWeeks || 0;
+            let weeks = 0;
             let days = 0;
-            // Если недели не заданы, вычисляем от RP-даты (НЕ от реального времени!)
-            if (weeks === 0 && p.conceptionDate && p.rpDate) {
+            // Всегда вычисляем из RP-дат если они есть
+            if (p.conceptionDate && p.rpDate) {
                 const rpTime = new Date(p.rpDate).getTime();
                 const conceptionTime = new Date(p.conceptionDate).getTime();
                 const diffMs = rpTime - conceptionTime;
@@ -1353,6 +1498,9 @@ function syncUI() {
                     weeks = Math.floor(diffDays / 7);
                     days = diffDays % 7;
                 }
+            } else {
+                // Фоллбэк на сохранённые недели если нет RP-дат
+                weeks = p.pregnancyWeeks || 0;
             }
 
             let dueDateStr = '—';
