@@ -401,34 +401,16 @@ function parseAIStatus(text) {
     if (weeks !== null && weeks > 0) {
         console.log(`[Reproductive] Parsed pregnancy: ${weeks} weeks`);
 
+        // ВАЖНО: НЕ устанавливаем беременность автоматически!
+        // Беременность начинается ТОЛЬКО через:
+        // 1. Тег [CONCEPTION_CHECK] и успешный бросок
+        // 2. Ручную установку через UI
+        
         if (!p.isPregnant) {
-            console.log('[Reproductive] AI says pregnant, setting pregnant state...');
-            p.isPregnant = true;
-            p.pregnancyWeeks = weeks;
-            
-            if (p.rpDate) {
-                const conceptionDate = calculateConceptionDate(new Date(p.rpDate), weeks);
-                if (conceptionDate) {
-                    p.conceptionDate = conceptionDate.toISOString();
-                }
-            } else {
-                p.conceptionDate = new Date().toISOString();
-            }
-
-            p.fetusCount = detectedFetusCount || 1;
-            p.fetusSex = [];
-            for (let i = 0; i < p.fetusCount; i++) {
-                p.fetusSex.push(roll(2) === 1 ? 'M' : 'F');
-            }
-
-            updated = true;
-
-            if (s.showNotifications) {
-                const sexIcons = p.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
-                const fetusText = p.fetusCount === 1 ? '1 плод' : p.fetusCount === 2 ? 'Двойня' : 'Тройня';
-                showNotification(`🔄 Синхронизировано: ${weeks} нед. | ${fetusText} | Пол: ${sexIcons}`, 'info');
-            }
+            // Игнорируем упоминание беременности - персонаж не беременна
+            console.log('[Reproductive] AI mentions pregnancy but character is not pregnant - ignoring (use [CONCEPTION_CHECK] tag or manual setup)');
         } else {
+            // Уже беременна - синхронизируем данные с AI
             if (detectedFetusCount && detectedFetusCount !== p.fetusCount) {
                 p.fetusCount = detectedFetusCount;
                 while (p.fetusSex.length < p.fetusCount) {
@@ -711,9 +693,14 @@ function checkComplications() {
     if (!p.rpDate) return;
 
     let weeks = p.pregnancyWeeks || 0;
-    if (weeks === 0 && p.conceptionDate) {
-        const diffMs = Date.now() - new Date(p.conceptionDate).getTime();
-        weeks = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7));
+    // Если недели не заданы, вычисляем от RP-даты (НЕ от реального времени!)
+    if (weeks === 0 && p.conceptionDate && p.rpDate) {
+        const rpTime = new Date(p.rpDate).getTime();
+        const conceptionTime = new Date(p.conceptionDate).getTime();
+        const diffMs = rpTime - conceptionTime;
+        if (diffMs > 0) {
+            weeks = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7));
+        }
     }
 
     const currentRpDate = new Date(p.rpDate);
@@ -1155,9 +1142,14 @@ function getPregnancyPrompt() {
     if (!p.isPregnant) return '';
 
     let weeks = p.pregnancyWeeks || 0;
-    if (weeks === 0 && p.conceptionDate) {
-        const diffTime = Math.abs(new Date() - new Date(p.conceptionDate));
-        weeks = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 7));
+    // Если недели не заданы напрямую, вычисляем от RP-даты (НЕ от реального времени!)
+    if (weeks === 0 && p.conceptionDate && p.rpDate) {
+        const rpTime = new Date(p.rpDate).getTime();
+        const conceptionTime = new Date(p.conceptionDate).getTime();
+        const diffMs = rpTime - conceptionTime;
+        if (diffMs > 0) {
+            weeks = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7));
+        }
     }
 
     let symptoms = '';
@@ -1351,11 +1343,16 @@ function syncUI() {
 
             let weeks = p.pregnancyWeeks || 0;
             let days = 0;
-            if (weeks === 0 && p.conceptionDate) {
-                const diffMs = Date.now() - new Date(p.conceptionDate).getTime();
-                const diffDays = Math.floor(diffMs / 86400000);
-                weeks = Math.floor(diffDays / 7);
-                days = diffDays % 7;
+            // Если недели не заданы, вычисляем от RP-даты (НЕ от реального времени!)
+            if (weeks === 0 && p.conceptionDate && p.rpDate) {
+                const rpTime = new Date(p.rpDate).getTime();
+                const conceptionTime = new Date(p.conceptionDate).getTime();
+                const diffMs = rpTime - conceptionTime;
+                if (diffMs > 0) {
+                    const diffDays = Math.floor(diffMs / 86400000);
+                    weeks = Math.floor(diffDays / 7);
+                    days = diffDays % 7;
+                }
             }
 
             let dueDateStr = '—';
