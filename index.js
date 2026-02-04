@@ -351,6 +351,23 @@ function parseRpDate(text) {
         }
     }
     
+    // Паттерн 7: JSON формат date:{"output":"21.10.2023"} или date:{'output':'21/10/23'}
+    const jsonDateMatch = text.match(/date[:\s]*[{]["']?output["']?[:\s]*["'](\d{1,2})[\.\/](\d{1,2})[\.\/](\d{2,4})["'][}]/i);
+    if (jsonDateMatch) {
+        const day = parseInt(jsonDateMatch[1]);
+        const month = parseInt(jsonDateMatch[2]) - 1;
+        let year = parseInt(jsonDateMatch[3]);
+        if (year < 100) {
+            year = year <= 50 ? 2000 + year : 1900 + year;
+        }
+        
+        if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+            parsedDate = new Date(year, month, day);
+            console.log(`[Reproductive] Parsed RP date (JSON format): ${parsedDate.toISOString()}`);
+            return parsedDate;
+        }
+    }
+    
     return parsedDate;
 }
 
@@ -405,7 +422,9 @@ function parseAIStatus(text) {
         /[Dd]ay\s+(?:of\s+cycle[:\s]+)?(\d+)/i,
         /[Cc]ycle[:\s]+(?:[Dd]ay\s+)?(\d+)/i,
         /🩸.*?[Дд]ень\s+(\d+)/i,
-        /🩸.*?[Dd]ay\s+(\d+)/i
+        /🩸.*?[Dd]ay\s+(\d+)/i,
+        // JSON формат: cycle_day:{"output":"12"} или cycle_day:{'output':'5'}
+        /cycle_day[:\s]*[{]["']?output["']?[:\s]*["'](\d+)["'][}]/i
     ];
     
     for (const pattern of cycleDayPatterns) {
