@@ -27,119 +27,10 @@ const defaultSettings = {
     currentChatId: null,
     chatPregnancyData: {},
     lastCheckedMessageId: null,
-    // Настройки расы/вида
-    racePreset: 'human',
-    pregnancyDuration: 40,      // недель
-    fertilityModifier: 1.0,     // множитель шанса зачатия
+    // Настройки беременности
+    pregnancyDuration: 40,      // недель (стандарт 40 = 9 мес, можно 12 = 3 мес и т.д.)
     twinsChance: 3,             // % шанс двойни
-    tripletsChance: 0.1,        // % шанс тройни
-    cycleLength: 28,            // длина цикла в днях
-    customRaceName: '',         // название кастомной расы
-    specialTraits: []           // особые черты
-};
-
-// Пресеты для разных рас
-const RACE_PRESETS = {
-    human: {
-        name: '👤 Человек',
-        nameEn: '👤 Human',
-        pregnancyDuration: 40,
-        fertilityModifier: 1.0,
-        twinsChance: 3,
-        tripletsChance: 0.1,
-        cycleLength: 28,
-        specialTraits: []
-    },
-    elf: {
-        name: '🧝 Эльф',
-        nameEn: '🧝 Elf',
-        pregnancyDuration: 52,      // год
-        fertilityModifier: 0.3,     // низкая плодовитость
-        twinsChance: 1,
-        tripletsChance: 0.01,
-        cycleLength: 45,            // длинный цикл
-        specialTraits: ['долгая беременность', 'лёгкие роды', 'быстрое восстановление']
-    },
-    vampire: {
-        name: '🧛 Вампир',
-        nameEn: '🧛 Vampire',
-        pregnancyDuration: 24,      // быстрее
-        fertilityModifier: 0.1,     // очень редко
-        twinsChance: 5,
-        tripletsChance: 0.5,
-        cycleLength: 30,
-        specialTraits: ['нужна кровь', 'ночная активность плода', 'болезненные роды']
-    },
-    werewolf: {
-        name: '🐺 Оборотень',
-        nameEn: '🐺 Werewolf',
-        pregnancyDuration: 16,      // как у волков ~4 месяца
-        fertilityModifier: 1.5,
-        twinsChance: 15,            // часто несколько щенков
-        tripletsChance: 5,
-        cycleLength: 21,
-        specialTraits: ['привязана к лунному циклу', 'сильный материнский инстинкт', 'многоплодность']
-    },
-    catgirl: {
-        name: '🐱 Кошко-девочка',
-        nameEn: '🐱 Catgirl',
-        pregnancyDuration: 20,      // ~5 месяцев
-        fertilityModifier: 1.8,     // высокая плодовитость
-        twinsChance: 25,
-        tripletsChance: 10,
-        cycleLength: 14,            // короткий цикл
-        specialTraits: ['течка', 'многоплодность', 'быстрое развитие']
-    },
-    demon: {
-        name: '😈 Демон/Суккуб',
-        nameEn: '😈 Demon/Succubus',
-        pregnancyDuration: 30,
-        fertilityModifier: 0.5,
-        twinsChance: 8,
-        tripletsChance: 2,
-        cycleLength: 28,
-        specialTraits: ['питается энергией', 'ускоренное развитие', 'магические способности плода']
-    },
-    dragon: {
-        name: '🐉 Дракон/Драконид',
-        nameEn: '🐉 Dragon/Dragonkin',
-        pregnancyDuration: 80,      // очень долго
-        fertilityModifier: 0.05,    // крайне редко
-        twinsChance: 0.5,
-        tripletsChance: 0.01,
-        cycleLength: 90,
-        specialTraits: ['яйцекладка возможна', 'огненное дыхание плода', 'чешуйки на животе']
-    },
-    fairy: {
-        name: '🧚 Фея/Пикси',
-        nameEn: '🧚 Fairy/Pixie',
-        pregnancyDuration: 12,      // 3 месяца
-        fertilityModifier: 2.0,
-        twinsChance: 20,
-        tripletsChance: 8,
-        cycleLength: 7,
-        specialTraits: ['крошечный плод', 'светящийся живот', 'магическая аура']
-    },
-    alien: {
-        name: '👽 Инопланетянин',
-        nameEn: '👽 Alien',
-        pregnancyDuration: 28,
-        fertilityModifier: 0.7,
-        twinsChance: 10,
-        tripletsChance: 3,
-        cycleLength: 35,
-        specialTraits: ['нестандартное развитие', 'телепатическая связь', 'особые потребности']
-    },
-    custom: {
-        name: '⚙️ Свои настройки',
-        nameEn: '⚙️ Custom',
-        pregnancyDuration: 40,
-        fertilityModifier: 1.0,
-        twinsChance: 3,
-        tripletsChance: 0.1,
-        cycleLength: 28,
-        specialTraits: []
-    }
+    tripletsChance: 0.1         // % шанс тройни
 };
 
 const defaultPregnancyData = {
@@ -170,7 +61,6 @@ const CHANCES = {
         pill: 91,
         iud: 99
     }
-    // twins и triplets теперь берутся из настроек расы
 };
 
 const LANG = {
@@ -773,7 +663,7 @@ function checkConception() {
 
     const cycleModifier = getCycleModifier(s.cycleDay);
     // Применяем модификатор плодовитости расы
-    let chance = Math.round(CHANCES.base * cycleModifier * (s.fertilityModifier || 1.0));
+    let chance = Math.round(CHANCES.base * cycleModifier);
 
     const contraceptionEff = CHANCES.contraception[s.contraception];
     let contraceptionFailed = false;
@@ -793,7 +683,7 @@ function checkConception() {
     const conceptionRoll = roll(100);
     const success = conceptionRoll <= chance;
 
-    console.log(`[Reproductive] Check: roll=${conceptionRoll}, need<=${chance}, fertilityMod=${s.fertilityModifier}, result=${success ? 'PREGNANT' : 'no'}`);
+    console.log(`[Reproductive] Check: roll=${conceptionRoll}, need<=${chance}, result=${success ? 'PREGNANT' : 'no'}`);
 
     const result = {
         roll: conceptionRoll,
@@ -1237,8 +1127,27 @@ function onMessageReceived() {
         }
 
         // === СТРОГАЯ ПРОВЕРКА: тег обрабатывается ТОЛЬКО при вагинальной эякуляции внутрь ===
-        // Нужны ОБА условия: 1) эякуляция и 2) внутрь/вагинально
         
+        // СНАЧАЛА проверяем на анальный/оральный секс — если да, ИГНОРИРУЕМ тег
+        const analKeywords = [
+            /анальн/i, /в попу/i, /в попк/i, /в зад/i, /в задн/i, /задний проход/i,
+            /в анус/i, /анус/i, /в жоп/i, /жопк/i, /в дырочк.*зад/i,
+            /anal/i, /in.*ass/i, /in.*butt/i, /backdoor/i, /anus/i, /rectum/i,
+            /ass.*fuck/i, /butt.*fuck/i, /sodomy/i
+        ];
+        
+        const oralKeywords = [
+            /оральн/i, /в рот/i, /минет/i, /отсос/i, /сосёт/i, /сосет/i, /сосала/i,
+            /глотает/i, /глотала/i, /глубокий.*горл/i, /горло/i, /fellatio/i,
+            /oral/i, /blowjob/i, /blow.*job/i, /suck.*cock/i, /suck.*dick/i,
+            /deepthroat/i, /deep.*throat/i, /mouth.*fuck/i, /throat.*fuck/i,
+            /куннилингус/i, /cunnilingus/i, /лижет/i, /лизала/i
+        ];
+        
+        const hasAnal = analKeywords.some(kw => kw.test(text));
+        const hasOral = oralKeywords.some(kw => kw.test(text));
+        
+        // Теперь проверяем на вагинальную эякуляцию
         const ejaculationKeywords = [
             // Русский - эякуляция/оргазм
             /кончи[лтв]/i, /кончае/i, /конча[юя]/i, /излил/i, /изверг/i,
@@ -1276,10 +1185,29 @@ function onMessageReceived() {
         const hasInside = insideKeywords.some(kw => kw.test(text));
         const hasDirectPhrase = directPhrases.some(kw => kw.test(text));
         
-        const isValidConception = hasDirectPhrase || (hasEjaculation && hasInside);
+        // Логика валидации:
+        // 1. Если есть directPhrase (явная вагинальная эякуляция типа "creampie", "cum inside pussy") — ОК
+        // 2. Если есть anal/oral БЕЗ directPhrase — ИГНОРИРУЕМ (скорее всего анальный/оральный секс)
+        // 3. Если есть ejaculation + inside БЕЗ anal/oral — ОК
+        
+        let isValidConception = false;
+        
+        if (hasDirectPhrase) {
+            // Явная вагинальная эякуляция — всегда ОК
+            isValidConception = true;
+            console.log('[Reproductive] Direct vaginal phrase detected - valid');
+        } else if (hasAnal || hasOral) {
+            // Есть анальный/оральный контекст, но нет явной вагинальной фразы — ИГНОР
+            console.log(`[Reproductive] Tag found but anal=${hasAnal}, oral=${hasOral} detected without explicit vaginal phrase - ignoring`);
+            return;
+        } else if (hasEjaculation && hasInside) {
+            // Есть эякуляция + внутрь, нет анального/орального — ОК
+            isValidConception = true;
+            console.log('[Reproductive] Ejaculation + inside detected without anal/oral - valid');
+        }
         
         if (!isValidConception) {
-            console.log(`[Reproductive] Tag found but content check FAILED: ejaculation=${hasEjaculation}, inside=${hasInside}, direct=${hasDirectPhrase} - ignoring`);
+            console.log(`[Reproductive] Tag found but content check FAILED: ejaculation=${hasEjaculation}, inside=${hasInside}, direct=${hasDirectPhrase}, anal=${hasAnal}, oral=${hasOral} - ignoring`);
             return;
         }
 
@@ -1340,19 +1268,24 @@ function getBasePrompt() {
     }
 
     // Только если НЕ беременна - инструкции про зачатие
-    prompt += `\n⛔ ВАЖНО — тег [CONCEPTION_CHECK]:\n`;
-    prompt += `ДОБАВЛЯЙ тег ТОЛЬКО если в ЭТОМ сообщении ЯВНО произошло ВСЁ:\n`;
-    prompt += `1) Вагинальный секс (пенис во влагалище)\n`;
-    prompt += `2) Эякуляция ВНУТРЬ (сперма попала в вагину)\n`;
-    prompt += `3) БЕЗ контрацепции или она ПОДВЕЛА\n\n`;
-    prompt += `❌ НЕ ДОБАВЛЯЙ тег если:\n`;
-    prompt += `- Секса НЕ было\n`;
-    prompt += `- Был оральный/анальный секс\n`;
-    prompt += `- Эякуляция снаружи/на тело\n`;
-    prompt += `- Прерванный акт\n`;
-    prompt += `- Контрацепция сработала\n`;
-    prompt += `- Просто романтика/флирт/поцелуи\n\n`;
-    prompt += `Формат (в самом конце, скрыто): <!-- [CYCLE_DAY:${day}][CONCEPTION_CHECK] -->]`;
+    prompt += `\n\n🚨🚨🚨 КРИТИЧЕСКИ ВАЖНО — тег [CONCEPTION_CHECK] 🚨🚨🚨\n`;
+    prompt += `════════════════════════════════════════════════════\n`;
+    prompt += `✅ ДОБАВЛЯЙ тег ТОЛЬКО при ВСЕХ условиях ОДНОВРЕМЕННО:\n`;
+    prompt += `   1) ВАГИНАЛЬНЫЙ секс (пенис ВНУТРИ ВЛАГАЛИЩА/ВАГИНЫ/КИСКИ)\n`;
+    prompt += `   2) ЭЯКУЛЯЦИЯ ВНУТРЬ ВАГИНЫ (сперма/семя ПОПАЛО в вагину)\n`;
+    prompt += `   3) БЕЗ контрацепции или она подвела\n\n`;
+    prompt += `🚫🚫🚫 ЗАПРЕЩЕНО ДОБАВЛЯТЬ ТЕГ — АБСОЛЮТНО ЗАПРЕЩЕНО:\n`;
+    prompt += `   ❌ АНАЛЬНЫЙ СЕКС — от анального секса НЕ БЕРЕМЕНЕЮТ!\n`;
+    prompt += `   ❌ ОРАЛЬНЫЙ СЕКС — от орального секса НЕ БЕРЕМЕНЕЮТ!\n`;
+    prompt += `   ❌ Эякуляция НА ТЕЛО (живот, спина, лицо, грудь, попа)\n`;
+    prompt += `   ❌ Эякуляция СНАРУЖИ (рядом, на бёдра, между ног)\n`;
+    prompt += `   ❌ Прерванный акт (вытащил ДО эякуляции)\n`;
+    prompt += `   ❌ Мастурбация, петтинг, ласки без проникновения\n`;
+    prompt += `   ❌ Секс с презервативом который НЕ порвался\n`;
+    prompt += `   ❌ Поцелуи, объятия, романтика\n\n`;
+    prompt += `⚠️ ЕСЛИ СОМНЕВАЕШЬСЯ — НЕ СТАВЬ ТЕГ!\n`;
+    prompt += `════════════════════════════════════════════════════\n`;
+    prompt += `Формат (скрыто в конце): <!-- [CYCLE_DAY:${day}][CONCEPTION_CHECK] -->`;
 
     return prompt;
 }
@@ -1423,12 +1356,6 @@ function getPregnancyPrompt() {
         recommendations = '⚠️ СРОЧНО! Возможна стимуляция родов';
     }
     
-    // Добавляем особые черты расы к симптомам
-    const traits = s.specialTraits || [];
-    if (traits.length > 0) {
-        symptoms += ` | Особенности: ${traits.join(', ')}`;
-    }
-
     let conceptionDateStr = p.conceptionDate ? new Date(p.conceptionDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
     
     let dueDateStr = '—';
@@ -1445,15 +1372,11 @@ function getPregnancyPrompt() {
     }
 
     const fetusText = p.fetusCount === 1 ? 'одним плодом' : p.fetusCount === 2 ? 'двойней' : 'тройней';
-    
-    // Определяем название расы
-    const raceName = s.racePreset === 'custom' ? (s.customRaceName || 'Особая раса') : (RACE_PRESETS[s.racePreset]?.name || 'Человек');
 
     let prompt = `
 
 [OOC: 🤰 БЕРЕМЕННОСТЬ — АКТИВНА]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-🧬 Раса: ${raceName}
 📅 Срок: ${weeks} недель из ${duration}
 👶 Беременна ${fetusText}
 ${sexText ? `⚤ Пол: ${sexText}` : ''}
@@ -1552,6 +1475,26 @@ function syncUI() {
     const contraSelect = document.getElementById('repro-contraception');
     if (contraSelect) contraSelect.value = s.contraception;
 
+    // Синхронизация срока беременности
+    const durationSelect = document.getElementById('repro-duration');
+    const durationCustom = document.getElementById('repro-duration-custom');
+    const manualDuration = document.getElementById('repro-manual-duration');
+    if (durationSelect) {
+        const dur = s.pregnancyDuration || 40;
+        const standardValues = ['12', '16', '20', '24', '28', '32', '36', '40'];
+        if (standardValues.includes(String(dur))) {
+            durationSelect.value = String(dur);
+            if (durationCustom) durationCustom.style.display = 'none';
+        } else {
+            durationSelect.value = 'custom';
+            if (durationCustom) {
+                durationCustom.style.display = 'inline-block';
+                durationCustom.value = dur;
+            }
+        }
+    }
+    if (manualDuration) manualDuration.value = s.pregnancyDuration || 40;
+
     const cycleInput = document.getElementById('repro-cycleday');
     const currentCycle = document.getElementById('repro-currentcycle');
 
@@ -1608,48 +1551,50 @@ function syncUI() {
                 }
             }
 
-            const progressPercent = Math.min(100, Math.round((weeks / 40) * 100));
+            const duration = s.pregnancyDuration || 40;
+            const progressPercent = Math.min(100, Math.round((weeks / duration) * 100));
             const sexIcons = p.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
             let fetusText = p.fetusCount === 1 ? 'Один плод' : p.fetusCount === 2 ? 'Двойня' : 'Тройня';
 
             let symptoms = '';
             let recommendations = '';
 
-            if (weeks <= 4) {
+            // Используем проценты от срока вместо фиксированных недель
+            if (progressPercent <= 10) {
                 const early = ['задержка менструации', 'лёгкая тошнота', 'усталость', 'перепады настроения', 'обострение обоняния', 'покалывание в груди', 'сонливость'];
                 symptoms = getSeededRandomSymptoms(early, 3, weeks);
-                recommendations = '✓ Фолиевая кислота, тест на ХГЧ, избегать алкоголя.';
-            } else if (weeks <= 8) {
+                recommendations = '✓ Начальная стадия, отдых, правильное питание.';
+            } else if (progressPercent <= 20) {
                 const firstTrim = ['токсикоз', 'чувствительность груди', 'частое мочеиспускание', 'металлический привкус', 'отвращение к запахам', 'головокружение', 'запоры'];
                 symptoms = getSeededRandomSymptoms(firstTrim, 4, weeks);
-                recommendations = '✓ Встать на учёт, первое УЗИ, дробное питание.';
-            } else if (weeks <= 12) {
+                recommendations = '✓ Первые недели, наблюдение, дробное питание.';
+            } else if (progressPercent <= 30) {
                 const earlySecond = ['живот округляется', 'токсикоз ослабевает', 'эмоциональные перепады', 'пигментация', 'повышенный аппетит'];
                 symptoms = getSeededRandomSymptoms(earlySecond, 4, weeks);
-                recommendations = '✓ Контроль веса, кальций, избегать горячих ванн.';
-            } else if (weeks <= 16) {
+                recommendations = '✓ Контроль веса, кальций, избегать перегрева.';
+            } else if (progressPercent <= 40) {
                 const midSecond = ['первые шевеления', 'либидо возрастает', 'энергия', 'грудь увеличивается', 'волосы гуще', 'судороги'];
                 symptoms = getSeededRandomSymptoms(midSecond, 4, weeks);
-                recommendations = '✓ Второй скрининг, массаж от растяжек, витамин D3.';
-            } else if (weeks <= 20) {
+                recommendations = '✓ Середина срока, массаж от растяжек.';
+            } else if (progressPercent <= 50) {
                 const lateSecond = ['живот увеличен', 'сердцебиение', 'растяжки', 'молозиво', 'судороги', 'изжога'];
                 symptoms = getSeededRandomSymptoms(lateSecond, 5, weeks);
                 recommendations = '✓ Бандаж, железо, крем от растяжек.';
-            } else if (weeks <= 27) {
+            } else if (progressPercent <= 70) {
                 const thirdStart = ['тяжесть', 'отёки', 'боли в пояснице', 'одышка', 'изжога', 'бессонница', 'толчки плода'];
                 symptoms = getSeededRandomSymptoms(thirdStart, 5, weeks);
-                recommendations = '✓ Сон на левом боку, компрессионные чулки, КТГ.';
-            } else if (weeks <= 36) {
+                recommendations = '✓ Сон на левом боку, отдых, регулярное наблюдение.';
+            } else if (progressPercent <= 90) {
                 const lateThird = ['усталость', 'частый туалет', 'тренировочные схватки', 'тяжело дышать', 'отёки', 'боли в тазу'];
                 symptoms = getSeededRandomSymptoms(lateThird, 6, weeks);
-                recommendations = '✓ Сумка в роддом, упражнения Кегеля, КТГ еженедельно.';
-            } else if (weeks <= 40) {
+                recommendations = '✓ Подготовка к родам, упражнения, частое наблюдение.';
+            } else if (progressPercent <= 100) {
                 const preBirth = ['живот опустился', 'пробка', 'схватки', 'подтекание вод', 'тянущие боли', 'гнездование'];
                 symptoms = getSeededRandomSymptoms(preBirth, 5, weeks);
-                recommendations = '✓ НЕ УХОДИТЬ ДАЛЕКО! Телефон роддома под рукой.';
+                recommendations = '✓ РОДЫ СКОРО! Быть готовой!';
             } else {
                 symptoms = '⚠️ ПЕРЕНАШИВАНИЕ!';
-                recommendations = '⚠️ СРОЧНО К ВРАЧУ!';
+                recommendations = '⚠️ СРОЧНО! Возможна стимуляция родов.';
             }
 
             let healthIcon = '✅', healthText = 'Норма', healthColor = '#00ff88';
@@ -1661,7 +1606,7 @@ function syncUI() {
 
             let riskFactors = [];
             if (p.fetusCount >= 2) riskFactors.push('Многоплодная');
-            if (weeks >= 41) riskFactors.push('Перенашивание');
+            if (weeks > duration) riskFactors.push('Перенашивание');
             if (p.complications.length > 2) riskFactors.push('Множественные осложнения');
 
             const riskHTML = riskFactors.length > 0 
@@ -1692,7 +1637,7 @@ function syncUI() {
                 <div class="pregnancy-info-row"><span class="pregnancy-info-label">🩺 Здоровье:</span><span class="pregnancy-info-value" style="color: ${healthColor};">${healthIcon} ${healthText}</span></div>
                 <div class="pregnancy-info-row"><span class="pregnancy-info-label">📅 Зачатие:</span><span class="pregnancy-info-value">${p.conceptionDate ? new Date(p.conceptionDate).toLocaleDateString('ru-RU') : '—'}</span></div>
                 <div class="pregnancy-info-row"><span class="pregnancy-info-label">🗓️ РП-дата:</span><span class="pregnancy-info-value" style="font-size: 10px; opacity: 0.7;">${p.rpDate ? new Date(p.rpDate).toLocaleDateString('ru-RU') : '—'}</span></div>
-                <div class="pregnancy-info-row"><span class="pregnancy-info-label">⏱️ Срок:</span><span class="pregnancy-info-value">${weeks} нед. ${days} дн.</span></div>
+                <div class="pregnancy-info-row"><span class="pregnancy-info-label">⏱️ Срок:</span><span class="pregnancy-info-value">${weeks}/${duration} нед. (${days} дн.)</span></div>
                 <div class="pregnancy-info-row"><span class="pregnancy-info-label">👶 Плоды:</span><span class="pregnancy-info-value">${fetusText} ${sexIcons}</span></div>
                 <div class="pregnancy-info-row"><span class="pregnancy-info-label">🗓️ ПДР:</span><span class="pregnancy-info-value">${dueDateStr}</span></div>
                 ${riskHTML}
@@ -1754,6 +1699,24 @@ function setupUI() {
             </div>
             <hr>
             <div class="flex-container flexFlowColumn">
+                <label><strong>Срок беременности</strong></label>
+                <div class="flex-container" style="gap: 5px; align-items: center; margin-top: 5px;">
+                    <select id="repro-duration" class="text_pole" style="width: 140px;">
+                        <option value="12">12 нед. (~3 мес.)</option>
+                        <option value="16">16 нед. (~4 мес.)</option>
+                        <option value="20">20 нед. (~5 мес.)</option>
+                        <option value="24">24 нед. (~6 мес.)</option>
+                        <option value="28">28 нед. (~7 мес.)</option>
+                        <option value="32">32 нед. (~8 мес.)</option>
+                        <option value="36">36 нед. (~9 мес.)</option>
+                        <option value="40">40 нед. (стандарт)</option>
+                        <option value="custom">Своё...</option>
+                    </select>
+                    <input type="number" id="repro-duration-custom" class="text_pole" style="width: 60px; display: none;" min="4" max="100" placeholder="нед.">
+                </div>
+            </div>
+            <hr>
+            <div class="flex-container flexFlowColumn">
                 <label><strong>${L('cycleDay')}</strong></label>
                 <div id="repro-currentcycle" style="padding: 5px; background: var(--SmartThemeBlurTintColor); border-radius: 5px;"><span>${s.cycleDay}</span></div>
             </div>
@@ -1780,8 +1743,9 @@ function setupUI() {
                         <option value="2">Двойня</option>
                         <option value="3">Тройня</option>
                     </select>
-                    <input id="repro-manual-weeks" type="number" class="text_pole" value="1" min="0" max="42" style="width: 60px;">
-                    <span style="font-size: 11px; opacity: 0.7; align-self: center;">нед.</span>
+                    <input id="repro-manual-weeks" type="number" class="text_pole" value="1" min="0" max="100" style="width: 60px;">
+                    <span style="font-size: 11px; opacity: 0.7; align-self: center;">нед. из</span>
+                    <input id="repro-manual-duration" type="number" class="text_pole" value="40" min="4" max="100" style="width: 50px;">
                 </div>
                 <div class="flex-container" style="gap: 5px; margin-top: 8px; flex-wrap: wrap; align-items: center;">
                     <label style="font-size: 11px; opacity: 0.7;">РП-дата:</label>
@@ -1859,12 +1823,43 @@ function setupUI() {
             manualDiv.is(':visible') ? manualDiv.slideUp(200) : manualDiv.slideDown(200);
         });
 
+        // Обработчик выбора срока беременности
+        $('#repro-duration').on('change', function() {
+            const s = getSettings();
+            const val = $(this).val();
+            if (val === 'custom') {
+                $('#repro-duration-custom').show().focus();
+            } else {
+                $('#repro-duration-custom').hide();
+                s.pregnancyDuration = parseInt(val);
+                saveSettingsDebounced();
+                updatePromptInjection();
+                syncUI();
+                showNotification(`Срок беременности: ${val} недель`, 'info');
+            }
+        });
+
+        $('#repro-duration-custom').on('change', function() {
+            const s = getSettings();
+            const val = Math.max(4, Math.min(100, parseInt($(this).val()) || 40));
+            $(this).val(val);
+            s.pregnancyDuration = val;
+            saveSettingsDebounced();
+            updatePromptInjection();
+            syncUI();
+            showNotification(`Срок беременности: ${val} недель`, 'info');
+        });
+
         $('#repro-setpregnant').on('click', function() {
             const s = getSettings();
             const p = getPregnancyData();
             const count = parseInt($('#repro-manual-count').val());
-            const weeks = Math.max(0, Math.min(42, parseInt($('#repro-manual-weeks').val()) || 1));
+            const duration = Math.max(4, Math.min(100, parseInt($('#repro-manual-duration').val()) || 40));
+            const weeks = Math.max(0, Math.min(duration, parseInt($('#repro-manual-weeks').val()) || 1));
             const rpDateInput = $('#repro-manual-rpdate').val();
+
+            // Устанавливаем срок беременности
+            s.pregnancyDuration = duration;
 
             p.isPregnant = true;
             p.pregnancyWeeks = weeks;
@@ -1890,7 +1885,7 @@ function setupUI() {
 
             const sexText = p.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
             const fetusText = count === 1 ? '1 плод' : count === 2 ? 'Двойня' : 'Тройня';
-            showNotification(`🤰 Беременность установлена!\n${weeks} нед. | ${fetusText} | Пол: ${sexText}`, 'success');
+            showNotification(`🤰 Беременность установлена!\n${weeks}/${duration} нед. | ${fetusText} | Пол: ${sexText}`, 'success');
 
             $('#repro-manual-pregnancy').slideUp(200);
         });
@@ -1947,6 +1942,13 @@ function loadSettings() {
                 delete s.healthStatus;
                 delete s.lastComplicationCheck;
             }
+
+            // Удаляем устаревшие поля рас
+            delete s.racePreset;
+            delete s.fertilityModifier;
+            delete s.cycleLength;
+            delete s.customRaceName;
+            delete s.specialTraits;
 
             for (const key in defaultSettings) {
                 if (s[key] === undefined) {
