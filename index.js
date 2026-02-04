@@ -1132,6 +1132,7 @@ function onMessageReceived() {
         const analKeywords = [
             /анальн/i, /в попу/i, /в попк/i, /в зад/i, /в задн/i, /задний проход/i,
             /в анус/i, /анус/i, /в жоп/i, /жопк/i, /в дырочк.*зад/i,
+            /в.*кишк/i, /кишку/i, /прямую кишку/i, /прямой кишк/i,  // кишка = rectum
             /anal/i, /in.*ass/i, /in.*butt/i, /backdoor/i, /anus/i, /rectum/i,
             /ass.*fuck/i, /butt.*fuck/i, /sodomy/i
         ];
