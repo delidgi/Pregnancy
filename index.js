@@ -1186,6 +1186,29 @@ function onMessageReceived() {
         const hasInside = insideKeywords.some(kw => kw.test(text));
         const hasDirectPhrase = directPhrases.some(kw => kw.test(text));
         
+        // Проверка на БУДУЩЕЕ время — если только "кончу/хочу кончить" без "кончил" — игнорируем
+        const futureTenseOnly = [
+            /я кончу/i, /сейчас кончу/i, /хочу кончить/i, /буду кончать/i,
+            /я изолью/i, /хочу излить/i, /сейчас изолью/i,
+            /i will cum/i, /i'm going to cum/i, /gonna cum/i, /about to cum/i,
+            /want to cum/i, /i'll cum/i
+        ];
+        const pastTenseEjaculation = [
+            /кончил/i, /излил/i, /изверг/i, /выплесну[лв]/i, /брызну[лв]/i,
+            /хлыну[лв]/i, /наполнил/i, /заполнил/i, /залил/i,
+            /came/i, /cummed/i, /filled/i, /flooded/i, /pumped/i, /shot/i,
+            /released/i, /spilled/i, /emptied/i
+        ];
+        
+        const hasFutureTense = futureTenseOnly.some(kw => kw.test(text));
+        const hasPastTense = pastTenseEjaculation.some(kw => kw.test(text));
+        
+        // Если есть только будущее время, но нет прошедшего — секс ещё не закончился!
+        if (hasFutureTense && !hasPastTense && !hasDirectPhrase) {
+            console.log('[Reproductive] Tag found but only FUTURE tense detected ("кончу/will cum") - ejaculation hasn\'t happened yet! Ignoring.');
+            return;
+        }
+        
         // Логика валидации:
         // 1. Если есть directPhrase (явная вагинальная эякуляция типа "creampie", "cum inside pussy") — ОК
         // 2. Если есть anal/oral БЕЗ directPhrase — ИГНОРИРУЕМ (скорее всего анальный/оральный секс)
@@ -1271,20 +1294,20 @@ function getBasePrompt() {
     // Только если НЕ беременна - инструкции про зачатие
     prompt += `\n\n🚨🚨🚨 КРИТИЧЕСКИ ВАЖНО — тег [CONCEPTION_CHECK] 🚨🚨🚨\n`;
     prompt += `════════════════════════════════════════════════════\n`;
-    prompt += `✅ ДОБАВЛЯЙ тег ТОЛЬКО при ВСЕХ условиях ОДНОВРЕМЕННО:\n`;
-    prompt += `   1) ВАГИНАЛЬНЫЙ секс (пенис ВНУТРИ ВЛАГАЛИЩА/ВАГИНЫ/КИСКИ)\n`;
-    prompt += `   2) ЭЯКУЛЯЦИЯ ВНУТРЬ ВАГИНЫ (сперма/семя ПОПАЛО в вагину)\n`;
-    prompt += `   3) БЕЗ контрацепции или она подвела\n\n`;
-    prompt += `🚫🚫🚫 ЗАПРЕЩЕНО ДОБАВЛЯТЬ ТЕГ — АБСОЛЮТНО ЗАПРЕЩЕНО:\n`;
-    prompt += `   ❌ АНАЛЬНЫЙ СЕКС — от анального секса НЕ БЕРЕМЕНЕЮТ!\n`;
-    prompt += `   ❌ ОРАЛЬНЫЙ СЕКС — от орального секса НЕ БЕРЕМЕНЕЮТ!\n`;
-    prompt += `   ❌ Эякуляция НА ТЕЛО (живот, спина, лицо, грудь, попа)\n`;
-    prompt += `   ❌ Эякуляция СНАРУЖИ (рядом, на бёдра, между ног)\n`;
-    prompt += `   ❌ Прерванный акт (вытащил ДО эякуляции)\n`;
-    prompt += `   ❌ Мастурбация, петтинг, ласки без проникновения\n`;
-    prompt += `   ❌ Секс с презервативом который НЕ порвался\n`;
-    prompt += `   ❌ Поцелуи, объятия, романтика\n\n`;
-    prompt += `⚠️ ЕСЛИ СОМНЕВАЕШЬСЯ — НЕ СТАВЬ ТЕГ!\n`;
+    prompt += `✅ ДОБАВЛЯЙ тег ТОЛЬКО когда ВСЁ УЖЕ ПРОИЗОШЛО (прошедшее время!):\n`;
+    prompt += `   1) Вагинальный секс СОСТОЯЛСЯ\n`;
+    prompt += `   2) Эякуляция внутрь вагины УЖЕ СЛУЧИЛАСЬ (кончил, излил, выплеснул)\n`;
+    prompt += `   3) Сперма УЖЕ ВНУТРИ неё\n\n`;
+    prompt += `🚫 ЗАПРЕЩЕНО ДОБАВЛЯТЬ ТЕГ:\n`;
+    prompt += `   ❌ Секс ЕЩЁ ИДЁТ (процесс, не финал)\n`;
+    prompt += `   ❌ "Я кончу", "хочу кончить", "сейчас кончу" — это БУДУЩЕЕ время, НЕ ставь!\n`;
+    prompt += `   ❌ АНАЛЬНЫЙ секс — не беременеют!\n`;
+    prompt += `   ❌ ОРАЛЬНЫЙ секс — не беременеют!\n`;
+    prompt += `   ❌ Эякуляция снаружи/на тело\n`;
+    prompt += `   ❌ Прерванный акт\n`;
+    prompt += `   ❌ Презерватив не порвался\n\n`;
+    prompt += `⚠️ ТЕГ ТОЛЬКО ПОСЛЕ ФИНАЛА! "Кончил внутрь" = прошедшее время = ОК\n`;
+    prompt += `⚠️ "Сейчас кончу" / "хочу кончить" = будущее = НЕ СТАВЬ ТЕГ!\n`;
     prompt += `════════════════════════════════════════════════════\n`;
     prompt += `Формат (скрыто в конце): <!-- [CYCLE_DAY:${day}][CONCEPTION_CHECK] -->`;
 
@@ -1373,19 +1396,69 @@ function getPregnancyPrompt() {
     }
 
     const fetusText = p.fetusCount === 1 ? 'одним плодом' : p.fetusCount === 2 ? 'двойней' : 'тройней';
+    const fetusCountText = p.fetusCount === 1 ? '1 плод' : p.fetusCount === 2 ? '2 плода (двойня)' : '3 плода (тройня)';
+    
+    // Размер плода по неделям (масштабируется по проценту срока)
+    let fetusSize = '';
+    if (progressPercent <= 5) {
+        fetusSize = 'маковое зёрнышко (~1-2 мм)';
+    } else if (progressPercent <= 10) {
+        fetusSize = 'рисовое зерно (~5-10 мм)';
+    } else if (progressPercent <= 15) {
+        fetusSize = 'виноградинка (~2-3 см)';
+    } else if (progressPercent <= 20) {
+        fetusSize = 'лайм (~5-6 см)';
+    } else if (progressPercent <= 25) {
+        fetusSize = 'лимон (~7-8 см)';
+    } else if (progressPercent <= 30) {
+        fetusSize = 'авокадо (~10-12 см)';
+    } else if (progressPercent <= 35) {
+        fetusSize = 'манго (~14-16 см)';
+    } else if (progressPercent <= 40) {
+        fetusSize = 'банан (~18-20 см)';
+    } else if (progressPercent <= 50) {
+        fetusSize = 'кукурузный початок (~25-28 см)';
+    } else if (progressPercent <= 60) {
+        fetusSize = 'баклажан (~30-35 см)';
+    } else if (progressPercent <= 70) {
+        fetusSize = 'кабачок (~38-40 см)';
+    } else if (progressPercent <= 80) {
+        fetusSize = 'дыня (~42-45 см)';
+    } else if (progressPercent <= 90) {
+        fetusSize = 'арбуз (~45-48 см)';
+    } else {
+        fetusSize = 'доношенный (~48-52 см, 2.5-4 кг)';
+    }
+    
+    // Здоровье
+    let healthText = '✅ Норма';
+    let healthDetails = '';
+    if (p.healthStatus === 'warning') {
+        healthText = '⚠️ Требует внимания';
+        healthDetails = p.complications && p.complications.length > 0 
+            ? ` (${p.complications.filter(c => !c.resolved).map(c => c.type).join(', ')})`
+            : '';
+    } else if (p.healthStatus === 'critical') {
+        healthText = '🚨 КРИТИЧЕСКОЕ';
+        healthDetails = p.complications && p.complications.length > 0 
+            ? ` (${p.complications.filter(c => !c.resolved).map(c => c.type).join(', ')})`
+            : '';
+    }
 
     let prompt = `
 
 [OOC: 🤰 БЕРЕМЕННОСТЬ — АКТИВНА]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-📅 Срок: ${weeks} недель из ${duration}
-👶 Беременна ${fetusText}
-${sexText ? `⚤ Пол: ${sexText}` : ''}
-📆 Зачатие: ${conceptionDateStr}
+📅 Срок: ${weeks}/${duration} недель (${Math.round(progressPercent)}%)
 🗓️ ПДР: ${dueDateStr}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
+👶 Плод: ${fetusCountText}
+${sexText ? `⚤ Пол: ${sexText}` : ''}
+📏 Размер: ${fetusSize}
+🩺 Здоровье: ${healthText}${healthDetails}
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-💊 СИМПТОМЫ (${Math.round(progressPercent)}%): ${symptoms}
+💊 СИМПТОМЫ: ${symptoms}
 
 ✓ РЕКОМЕНДАЦИИ: ${recommendations}
 `;
@@ -1557,6 +1630,23 @@ function syncUI() {
             const sexIcons = p.fetusSex.map(sex => sex === 'M' ? '♂️' : '♀️').join(' ');
             let fetusText = p.fetusCount === 1 ? 'Один плод' : p.fetusCount === 2 ? 'Двойня' : 'Тройня';
 
+            // Размер плода
+            let fetusSize = '';
+            if (progressPercent <= 5) fetusSize = '🌱 маковое зёрнышко (~1-2 мм)';
+            else if (progressPercent <= 10) fetusSize = '🍚 рисовое зерно (~5-10 мм)';
+            else if (progressPercent <= 15) fetusSize = '🍇 виноградинка (~2-3 см)';
+            else if (progressPercent <= 20) fetusSize = '🍋 лайм (~5-6 см)';
+            else if (progressPercent <= 25) fetusSize = '🍋 лимон (~7-8 см)';
+            else if (progressPercent <= 30) fetusSize = '🥑 авокадо (~10-12 см)';
+            else if (progressPercent <= 35) fetusSize = '🥭 манго (~14-16 см)';
+            else if (progressPercent <= 40) fetusSize = '🍌 банан (~18-20 см)';
+            else if (progressPercent <= 50) fetusSize = '🌽 кукуруза (~25-28 см)';
+            else if (progressPercent <= 60) fetusSize = '🍆 баклажан (~30-35 см)';
+            else if (progressPercent <= 70) fetusSize = '🥒 кабачок (~38-40 см)';
+            else if (progressPercent <= 80) fetusSize = '🍈 дыня (~42-45 см)';
+            else if (progressPercent <= 90) fetusSize = '🍉 арбуз (~45-48 см)';
+            else fetusSize = '👶 доношенный (~48-52 см)';
+
             let symptoms = '';
             let recommendations = '';
 
@@ -1635,12 +1725,11 @@ function syncUI() {
             }
 
             monitorContent.innerHTML = `
-                <div class="pregnancy-info-row"><span class="pregnancy-info-label">🩺 Здоровье:</span><span class="pregnancy-info-value" style="color: ${healthColor};">${healthIcon} ${healthText}</span></div>
-                <div class="pregnancy-info-row"><span class="pregnancy-info-label">📅 Зачатие:</span><span class="pregnancy-info-value">${p.conceptionDate ? new Date(p.conceptionDate).toLocaleDateString('ru-RU') : '—'}</span></div>
-                <div class="pregnancy-info-row"><span class="pregnancy-info-label">🗓️ РП-дата:</span><span class="pregnancy-info-value" style="font-size: 10px; opacity: 0.7;">${p.rpDate ? new Date(p.rpDate).toLocaleDateString('ru-RU') : '—'}</span></div>
                 <div class="pregnancy-info-row"><span class="pregnancy-info-label">⏱️ Срок:</span><span class="pregnancy-info-value">${weeks}/${duration} нед. (${days} дн.)</span></div>
-                <div class="pregnancy-info-row"><span class="pregnancy-info-label">👶 Плоды:</span><span class="pregnancy-info-value">${fetusText} ${sexIcons}</span></div>
                 <div class="pregnancy-info-row"><span class="pregnancy-info-label">🗓️ ПДР:</span><span class="pregnancy-info-value">${dueDateStr}</span></div>
+                <div class="pregnancy-info-row"><span class="pregnancy-info-label">👶 Плод:</span><span class="pregnancy-info-value">${fetusText} ${sexIcons}</span></div>
+                <div class="pregnancy-info-row"><span class="pregnancy-info-label">📏 Размер:</span><span class="pregnancy-info-value" style="font-size: 11px;">${fetusSize}</span></div>
+                <div class="pregnancy-info-row"><span class="pregnancy-info-label">🩺 Здоровье:</span><span class="pregnancy-info-value" style="color: ${healthColor};">${healthIcon} ${healthText}</span></div>
                 ${riskHTML}
                 <div class="pregnancy-progress-bar"><div class="pregnancy-progress-fill" style="width: ${progressPercent}%"></div></div>
                 <div style="text-align: center; font-size: 11px; opacity: 0.7; margin-bottom: 10px;">${progressPercent}% до родов</div>
