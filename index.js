@@ -1236,7 +1236,54 @@ function onMessageReceived() {
             return;
         }
 
-        console.log('[Reproductive] Tag detected! Rolling conception check...');
+        // === СТРОГАЯ ПРОВЕРКА: тег обрабатывается ТОЛЬКО при вагинальной эякуляции внутрь ===
+        // Нужны ОБА условия: 1) эякуляция и 2) внутрь/вагинально
+        
+        const ejaculationKeywords = [
+            // Русский - эякуляция/оргазм
+            /кончи[лтв]/i, /кончае/i, /конча[юя]/i, /излил/i, /изверг/i,
+            /семя/i, /сперм/i, /эякул/i, /оргазм/i, /разряд/i,
+            /выплесну/i, /брызну/i, /хлыну/i,
+            // English - ejaculation/orgasm
+            /cum[ms]?(?:ing)?/i, /came/i, /ejaculat/i, /orgasm/i,
+            /spurt/i, /shoot/i, /release/i, /seed/i, /load/i
+        ];
+        
+        const insideKeywords = [
+            // Русский - внутрь/вагинально
+            /внутр/i, /вн[её]ё?/i, /в неё/i, /в нее/i, /в тебя/i, /в меня/i,
+            /вагин/i, /влагалищ/i, /матк/i, /лон[оеа]/i, /утроб/i,
+            /глубин/i, /до упора/i, /целиком/i,
+            /наполн/i, /заполн/i, /залил/i, /затопил/i, /заливая/i,
+            // English - inside/vaginal
+            /inside/i, /into her/i, /into you/i, /into me/i,
+            /vagin/i, /womb/i, /deep/i, /depths/i,
+            /fill(?:ed|ing)?/i, /flood/i, /pump/i
+        ];
+        
+        // Специальные фразы которые сами по себе означают вагинальную эякуляцию
+        const directPhrases = [
+            /creampie/i, /cream\s*pie/i,
+            /breed/i, /impregnate/i, /knock.*up/i,
+            /кончил.*внутрь/i, /внутрь.*кончил/i,
+            /кончил.*в.*(?:неё|нее|тебя|меня|вагин|влагалищ|киск|пизд)/i,
+            /cum.*inside/i, /came.*inside/i, /cum.*in.*(?:her|you|me|pussy|vagina)/i,
+            /filled.*(?:her|you|me).*with/i, /fill.*(?:her|you|me).*up/i,
+            /семя.*внутр/i, /сперм.*внутр/i, /сперм.*(?:вагин|влагалищ)/i
+        ];
+        
+        const hasEjaculation = ejaculationKeywords.some(kw => kw.test(text));
+        const hasInside = insideKeywords.some(kw => kw.test(text));
+        const hasDirectPhrase = directPhrases.some(kw => kw.test(text));
+        
+        const isValidConception = hasDirectPhrase || (hasEjaculation && hasInside);
+        
+        if (!isValidConception) {
+            console.log(`[Reproductive] Tag found but content check FAILED: ejaculation=${hasEjaculation}, inside=${hasInside}, direct=${hasDirectPhrase} - ignoring`);
+            return;
+        }
+
+        console.log('[Reproductive] Tag detected AND vaginal ejaculation confirmed! Rolling conception check...');
 
         const cycleDayMatch = text.match(/\[CYCLE_DAY:(\d+)\]/);
         if (cycleDayMatch) {
